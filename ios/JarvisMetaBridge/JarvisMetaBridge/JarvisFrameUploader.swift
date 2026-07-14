@@ -16,7 +16,8 @@
 //       "detections": [ { "bbox": [float], "confidence": float, "track_id": int? } ],
 //       "new_persons": int,
 //       "identifications": [ { "track_id": int, "status": string,
-//                              "name": string?, "person_id": string? } ],
+//                              "name": string?, "person_id": string?,
+//                              "error": string? } ],
 //       "timestamp": int, "source": string }
 //
 // SAFETY / PRIVACY: the streaming path (`submit`) ALWAYS sends `target: false`
@@ -52,12 +53,14 @@ struct FrameProcessedResponse: Decodable {
     let status: String
     let name: String?
     let personId: String?
+    let error: String?
 
     enum CodingKeys: String, CodingKey {
       case trackId = "track_id"
       case status
       case name
       case personId = "person_id"
+      case error
     }
   }
 
@@ -103,7 +106,7 @@ final class JarvisFrameUploader: ObservableObject {
   @Published private(set) var lastResponse: FrameProcessedResponse?
   /// Status of the most recent explicit, consent-gated identification request.
   @Published private(set) var identifyStatus: String = "Idle"
-  /// True while a one-shot identification request is in flight.
+  /// True while a one-shot request or its accepted backend job is in progress.
   @Published private(set) var isIdentifying: Bool = false
 
   /// JPEG compression quality. ~0.70 keeps frames small enough for ~1 fps upload.
@@ -119,6 +122,11 @@ final class JarvisFrameUploader: ObservableObject {
   /// Guards against overlapping uploads — a frame is dropped while one is in flight.
   private var isUploading = false
   private var lastUploadStartedAt: Date = .distantPast
+
+  /// Tracks the accepted backend job separately from the trigger HTTP request.
+  private var isIdentificationJobActive = false
+  private var identificationTimeoutTask: Task<Void, Never>?
+  private let identificationTimeout: Duration = .seconds(90)
 
   init(config: AppConfig? = nil) {
     self.config = config ?? .shared
@@ -160,8 +168,26 @@ final class JarvisFrameUploader: ObservableObject {
     guard !isIdentifying else { return nil }
     isIdentifying = true
     identifyStatus = "Requesting identification…"
-    defer { isIdentifying = false }
-    return await perform(image: image, target: true)
+    let response = await perform(image: image, target: true)
+
+    guard let response else {
+      isIdentifying = false
+      identifyStatus = lastError.map { "Request failed: \($0)" }
+        ?? "Identification request failed — tap Identify to retry"
+      return nil
+    }
+
+    guard response.identifications.contains(where: { $0.status == "identifying" }) else {
+      if isIdentifying {
+        isIdentifying = false
+        identifyStatus = response.detections.isEmpty
+          ? "No identification started — no person detected"
+          : "No identification started — tap Identify to retry"
+      }
+      return response
+    }
+
+    return response
   }
 
   /// Shared encode → POST → decode. `target` is supplied by the caller: false for
@@ -211,8 +237,11 @@ final class JarvisFrameUploader: ObservableObject {
       lastResponse = decoded
       lastDetectionCount = decoded.detections.count
       lastError = nil
+      updateIdentificationState(from: decoded)
       if target {
-        identifyStatus = "Identification requested · \(decoded.detections.count) person(s) in frame"
+        if isIdentificationJobActive {
+          identifyStatus = "Identifying person…"
+        }
       } else {
         uploadedCount += 1
         lastStatus = "OK · \(decoded.detections.count) detection(s) · capture \(decoded.captureId)"
@@ -236,5 +265,53 @@ final class JarvisFrameUploader: ObservableObject {
     lastError = message
     lastStatus = "Error"
     NSLog("[JarvisFrameUploader] ERROR %@", message)
+  }
+
+  /// Reconciles both trigger and polling responses without extending the job's
+  /// single 90-second deadline on repeated `identifying` responses.
+  private func updateIdentificationState(from response: FrameProcessedResponse) {
+    guard let latest = response.identifications.last else { return }
+
+    switch latest.status {
+    case "identifying":
+      // Ignore stale polling after a terminal state or timeout. Only the
+      // explicit request may enter the backend-job lifecycle.
+      guard isIdentifying || isIdentificationJobActive else { return }
+      if !isIdentificationJobActive {
+        isIdentificationJobActive = true
+        startIdentificationTimeout()
+      }
+      isIdentifying = true
+      identifyStatus = "Identifying person…"
+    case "identified":
+      finishIdentification()
+      identifyStatus = latest.name.map { "Identified: \($0)" } ?? "Identified"
+    case "failed":
+      finishIdentification()
+      identifyStatus = latest.error.flatMap { $0.isEmpty ? nil : "Failed: \($0)" }
+        ?? "Identification failed — tap Identify to retry"
+    default:
+      break
+    }
+  }
+
+  private func startIdentificationTimeout() {
+    identificationTimeoutTask?.cancel()
+    identificationTimeoutTask = Task { [weak self] in
+      guard let self else { return }
+      try? await Task.sleep(for: self.identificationTimeout)
+      guard !Task.isCancelled else { return }
+      self.isIdentificationJobActive = false
+      self.isIdentifying = false
+      self.identifyStatus = "Timed out — tap Identify to retry"
+      self.identificationTimeoutTask = nil
+    }
+  }
+
+  private func finishIdentification() {
+    identificationTimeoutTask?.cancel()
+    identificationTimeoutTask = nil
+    isIdentificationJobActive = false
+    isIdentifying = false
   }
 }
