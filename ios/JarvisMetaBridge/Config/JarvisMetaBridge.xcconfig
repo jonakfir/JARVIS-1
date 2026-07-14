@@ -1,0 +1,22 @@
+// JarvisMetaBridge.xcconfig
+//
+// The single place to set your signing + Meta credentials. These flow into the
+// build settings and into Info.plist ($(DEVELOPMENT_TEAM), $(CLIENT_TOKEN),
+// $(META_APP_ID)). Fill them in, or set the same values in Xcode's Signing &
+// Capabilities tab.
+
+// --- Apple signing ---
+// Your 10-character Apple Developer Team ID (auto-detected from your codesigning
+// identity: Jonathan Kfir). Change only if you build under a different team.
+DEVELOPMENT_TEAM = 3K8N98ZS5T
+
+// A unique reverse-DNS bundle identifier you control. Change if you like — it
+// just needs to be unique on your Apple developer team.
+PRODUCT_BUNDLE_IDENTIFIER = com.jonakfir.JarvisMetaBridge
+
+// --- Meta Wearables DAT credentials ---
+// From your app on the Meta for Developers dashboard (developers.facebook.com).
+// CLIENT_TOKEN: App > Settings > Advanced > Client token.
+// META_APP_ID:  the numeric App ID.
+CLIENT_TOKEN =
+META_APP_ID =
