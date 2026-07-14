@@ -62,6 +62,7 @@ class Identification(BaseModel):
     status: str  # "identifying" | "identified" | "failed"
     name: str | None = None
     person_id: str | None = None
+    error: str | None = None
 
 
 class FrameProcessedResponse(BaseModel):
