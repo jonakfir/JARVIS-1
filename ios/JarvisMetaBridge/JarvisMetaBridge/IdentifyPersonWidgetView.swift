@@ -228,6 +228,9 @@ struct IdentifyPersonWidgetView: View {
   }
 
   private func identLabel(_ ident: FrameProcessedResponse.Identification) -> String {
+    if ident.status == "failed", let error = ident.error, !error.isEmpty {
+      return "failed · \(error)"
+    }
     if let name = ident.name, !name.isEmpty { return "\(ident.status) · \(name)" }
     return ident.status
   }

@@ -33,6 +33,7 @@ class Identification:
             "status": self.status,
             "name": self.name,
             "person_id": self.person_id,
+            "error": self.error,
         }
 
 
@@ -95,9 +96,21 @@ class FrameHandler:
             crops = self.detector.crop_persons(frame_b64, detections)
             logger.info("TARGET mode: {} person(s) detected, {} crop(s)", len(detections), len(crops))  # noqa: E501
 
-            if crops:
-                # Pick the largest crop (most prominent person in view)
-                best_idx = max(range(len(crops)), key=lambda i: len(crops[i]))
+            if len(crops) != len(detections):
+                logger.error(
+                    "TARGET: detection/crop count mismatch ({} detections, {} crops)",
+                    len(detections),
+                    len(crops),
+                )
+            elif crops:
+                def bbox_area(detection: dict) -> float:
+                    x1, y1, x2, y2 = detection["bbox"]
+                    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+                best_idx = max(
+                    range(len(detections)),
+                    key=lambda index: bbox_area(detections[index]),
+                )
                 crop_b64 = crops[best_idx]
                 det = detections[best_idx]
                 tid = det.get("track_id", -1)
@@ -163,13 +176,13 @@ class FrameHandler:
         tid = ident.track_id
         logger.info("Starting face identification for track_id={}", tid)
 
-        if not self._face_detector or not self._embedder or not self._face_searcher:
-            logger.warning("Face pipeline not fully configured, skipping identification")
-            ident.status = "failed"
-            ident.error = "Face pipeline not configured"
-            return
-
         try:
+            if not self._face_detector or not self._embedder or not self._face_searcher:
+                logger.warning("Face pipeline not fully configured, skipping identification")
+                ident.status = "failed"
+                ident.error = "Face pipeline not configured"
+                return
+
             # Decode crop to raw bytes
             crop_bytes = base64.b64decode(crop_b64)
 
