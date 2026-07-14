@@ -14,11 +14,12 @@ Ray-Ban Meta glasses camera
 Each frame is JPEG-encoded (~0.70 quality), base64-encoded, and POSTed as JSON.
 
 > ### Privacy / safety
-> This app **only** performs on-device person *detection* on the backend. Every
-> frame is uploaded with **`target: false`**. `target: true` is what would tell
-> JARVIS to run reverse face-search / identification — this app never sends it and
-> the value is hardcoded in [`JarvisFrameUploader.swift`](JarvisMetaBridge/JarvisFrameUploader.swift).
-> Do not change it.
+> Normal streaming performs person detection only and always sends **`target:
+> false`**. After obtaining the subject's clear, in-the-moment consent, the user
+> can tap **Identify person** to send one current frame with **`target: true`**.
+> That explicit, consent-gated action is the only identification path; it is never
+> sent continuously, automatically, or on a timer. See
+> [`JarvisFrameUploader.swift`](JarvisMetaBridge/JarvisFrameUploader.swift).
 
 ---
 
@@ -157,9 +158,6 @@ setting it in the xcconfig keeps everything in sync.)
 
 ### 6. Find your Mac's local IP address
 
-> **Pre-filled:** `AppConfig.defaultBackendURLString` is already set to this Mac's
-> current Wi-Fi IP (`http://192.168.68.65:8000`). Only redo this if your IP changed.
-
 On the same Wi-Fi as the phone, run:
 
 ```bash
@@ -168,58 +166,103 @@ ipconfig getifaddr en0   # Wi-Fi; try en1 if blank
 
 ### 7. Set the JARVIS backend URL
 
-Already done — [`AppConfig.swift`](JarvisMetaBridge/AppConfig.swift) is pre-set to
-`http://192.168.68.65:8000` (this Mac's IP). It's the **single** place the default
-URL lives, and you can also change it at runtime via the in-app **gear → Settings**.
+Set [`AppConfig.swift`](JarvisMetaBridge/AppConfig.swift), or use the in-app
+**gear → Settings**, to `http://<mac-ip>:8000` using the address from step 6.
+Do not use `localhost`; on the iPhone that refers to the phone itself.
 
 ### 8. Start the JARVIS backend (bound to all interfaces)
 
-A ready-to-fill `backend/.env` has been created — add at least `GEMINI_API_KEY`
-and `ANTHROPIC_API_KEY` (the two Tier-1 keys) to it. Then bind uvicorn to all
-interfaces so the phone can reach it (localhost-only won't work from a device):
+Bind uvicorn to all interfaces so the phone can reach it (localhost-only will not
+work from a device):
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+uv sync
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Sanity check from your Mac (and the phone's Safari):
-`http://192.168.68.65:8000/api/health` should return `{"status":"ok", ...}`.
+`http://<mac-ip>:8000/api/health` should return `{"status":"ok", ...}`.
 
 > If the phone can't load that URL: check both devices are on the same network,
 > and that the macOS firewall (*System Settings → Network → Firewall*) isn't
 > blocking incoming connections to Python/uvicorn.
 
-### 9. Connect your physical iPhone
+### 9. Configure the Google-authenticated PimEyes session
+
+Identify Person uses a local export of the active PimEyes session. It never stores
+or automates the Google password.
+
+1. Open an incognito/private browser window and sign in to
+   [PimEyes](https://pimeyes.com) with **Continue with Google** for
+   `jonakfir@gmail.com`.
+2. Confirm that a PimEyes search succeeds manually in that browser session.
+3. Use a trusted cookie-export extension to export only `pimeyes.com` cookies as
+   JSON. Cookie-Editor list JSON and name/value dictionary JSON are supported.
+4. Save the export at `backend/identification/pimeyes_cookies.json`, relative to
+   the repository root.
+5. Never commit, share, or paste this file into logs. It grants access to the
+   authenticated session and is intentionally ignored by Git.
+6. Restart the backend after creating or replacing the file because cookies are
+   cached in memory.
+7. If the app reports expired or unauthorized cookies, export again from a fresh
+   authenticated session, replace the file, and restart the backend.
+
+`PIMEYES_EMAIL` and `PIMEYES_PASSWORD` do not reproduce Continue with Google for
+this account. Leave them blank if present in a local environment and use the
+cookie file instead.
+
+### 10. Connect your physical iPhone
 
 Plug the iPhone in (or use wireless debugging), select it as the **run destination**
-in Xcode's toolbar, then **⌘R** to build & run. Approve the developer certificate on
-the device the first time (*Settings → General → VPN & Device Management*).
+in Xcode's toolbar, select the **JarvisMetaBridge** target, and confirm its Team and
+unique bundle identifier under **Signing & Capabilities**. Then press **⌘R** to
+build and run. Approve the developer certificate on the device the first time
+(*Settings → General → VPN & Device Management*).
 
-### 10. Register the app with Meta AI
+### 11. Register the app with Meta AI
 
 In the running app, tap **Connect glasses (Meta AI)**. This calls the DAT SDK's
 `startRegistration()`, which hands off to the Meta AI app and returns via the
-`jarvismetabridge://` callback. The **Meta AI** row turns green ("Registered").
+callback configured by `MWDAT.AppLinkURLScheme` / `CFBundleURLTypes`. Use the Meta
+App ID, client token, development team, and bundle identifier from
+`Config/JarvisMetaBridge.xcconfig`. The callback scheme is configured in
+`Info.plist`; register the matching value in the Meta app. With the current project
+configuration that callback is `jarvismetabridge://`.
+The **Meta AI** row turns green ("Registered").
 
-### 11. Connect the glasses
+### 12. Connect the glasses
 
 With the glasses powered on, worn/open, and paired in Meta AI, the **Glasses** row
 turns green when the SDK auto-selects an active device.
 
-### 12. Grant camera permission
+### 13. Grant camera permission
 
 Tap **Start Stream**. The first time, the DAT SDK requests camera access for the
 glasses. Approve it — the **Camera permission** row turns green.
 
-### 13. Start the stream
+### 14. Start the stream
 
 After permission is granted, streaming begins automatically. Live frames appear in
 the preview box, and the app starts uploading ~1 frame/sec to JARVIS.
 
-### 14. Confirm frames reach JARVIS
+### 15. Identify a consenting person
+
+Use this manual sequence on the physical iPhone:
+
+1. Tap **Connect glasses (Meta AI)** and wait for registration and an active device.
+2. Tap **Start Stream** and grant camera permission when prompted.
+3. Confirm live preview and detection-only uploads are running.
+4. Obtain the person-in-view's clear, in-the-moment consent.
+5. Tap **Identify person (with consent)** and confirm the consent dialog.
+6. Keep streaming while the app polls. The status progresses from requesting to
+   identifying, then shows the resolved name or an actionable failure. If no
+   terminal response arrives within 90 seconds, the button becomes available to retry.
+
+The stream continues to send `target: false`; only step 5 sends one `target: true`
+frame. Do not use identification continuously or without consent.
+
+### 16. Confirm frames reach JARVIS
 
 - In the app: **Upload status** shows `OK · N detection(s) · capture …`, **Frames
   accepted** increments, and **Latest detections** reflects JARVIS's YOLO output.

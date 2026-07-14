@@ -51,9 +51,8 @@ cp .env.example .env
 
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
-uvicorn main:app --reload --port 8000
+uv sync
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The backend starts even with missing API keys — features degrade gracefully. Check what's available:
@@ -100,6 +99,40 @@ Copy `.env.example` to `.env` and fill in what you have. Nothing is strictly req
 | `LAMINAR_API_KEY` | Agent tracing | [lmnr.ai](https://www.lmnr.ai) |
 | `SUPERMEMORY_API_KEY` | Dossier caching | [supermemory.ai](https://supermemory.ai) |
 | `PIMEYES_ACCOUNT_POOL` | Facial recognition search | JSON array of PimEyes accounts |
+
+### Google-authenticated PimEyes session
+
+The Identify Person flow uses the existing Google-authenticated PimEyes browser
+session for `jonakfir@gmail.com`; it does not store or automate Google credentials.
+
+1. Open an incognito/private browser window and sign in to
+   [PimEyes](https://pimeyes.com) with **Continue with Google** for
+   `jonakfir@gmail.com`.
+2. Confirm that a PimEyes search succeeds manually in that browser session.
+3. Using a trusted cookie-export extension, export only `pimeyes.com` cookies as
+   JSON. Cookie-Editor list JSON and name/value dictionary JSON are supported.
+4. Save the export at `backend/identification/pimeyes_cookies.json`.
+5. Never commit, share, or paste this file into logs or documentation. It grants
+   access to the authenticated PimEyes session and is ignored by Git.
+6. Restart the backend after creating or replacing the file because the cookies
+   are cached in memory.
+7. If JARVIS reports expired or unauthorized cookies, repeat the export from a
+   fresh authenticated session and restart the backend again.
+
+`PIMEYES_EMAIL` and `PIMEYES_PASSWORD` cannot reproduce Continue with Google for
+this account. Leave those values blank if they exist in a local environment; the
+cookie file is the supported authentication path.
+
+### Identify Person from a physical iPhone
+
+Run the backend on all interfaces using the command above, then find the Mac's
+Wi-Fi address with `ipconfig getifaddr en0` (`en1` may be used if `en0` is blank).
+Set the iOS app backend URL to `http://<mac-ip>:8000`. On a signed physical iPhone,
+the deliberate flow is: **Connect glasses → grant camera permission → Start Stream
+→ obtain the person's consent → Identify person**. Normal stream frames send
+`target: false`; only that explicit action sends one frame with `target: true`.
+See [`ios/JarvisMetaBridge/README.md`](ios/JarvisMetaBridge/README.md) for signing,
+Meta callback, and device setup details.
 
 ## Project Structure
 
