@@ -5,8 +5,8 @@
 // forwards each frame to JARVIS through `JarvisFrameUploader`.
 //
 // Adapted from Meta's official CameraAccess sample — uses only real SDK APIs
-// (SDK 0.4.0): StreamSession, StreamSessionConfig, AutoDeviceSelector,
-// VideoCodec.raw, StreamingResolution, StreamSessionState, StreamSessionError,
+// (SDK 0.8.x): DeviceSession, Stream, StreamConfiguration, AutoDeviceSelector,
+// VideoCodec.raw, StreamingResolution, StreamState, StreamError,
 // Permission.camera, and videoFrame.makeUIImage().
 //
 
@@ -49,25 +49,15 @@ final class StreamSessionViewModel: ObservableObject {
   var isStreaming: Bool { streamingStatus != .stopped }
 
   // DAT SDK plumbing
-  private var streamSession: StreamSession
-  private var stateListenerToken: AnyListenerToken?
-  private var videoFrameListenerToken: AnyListenerToken?
-  private var errorListenerToken: AnyListenerToken?
-  private var photoDataListenerToken: AnyListenerToken?
   private let wearables: WearablesInterface
   private let deviceSelector: AutoDeviceSelector
   private var deviceMonitorTask: Task<Void, Never>?
+  private var sessionManager: DeviceStreamSessionManager!
 
   init(wearables: WearablesInterface, uploader: JarvisFrameUploader) {
     self.wearables = wearables
     self.uploader = uploader
     self.deviceSelector = AutoDeviceSelector(wearables: wearables)
-
-    let config = StreamSessionConfig(
-      videoCodec: VideoCodec.raw,
-      resolution: StreamingResolution.low,
-      frameRate: 24)
-    self.streamSession = StreamSession(streamSessionConfig: config, deviceSelector: deviceSelector)
 
     deviceMonitorTask = Task { @MainActor [weak self] in
       guard let self else { return }
@@ -76,64 +66,30 @@ final class StreamSessionViewModel: ObservableObject {
       }
     }
 
-    attachListeners()
+    let callbacks = CameraStreamCallbacks(
+      onState: { [weak self] token, state in self?.handleStreamState(state, token: token) },
+      onFrame: { [weak self] token, image in self?.handleVideoFrame(image, token: token) },
+      onPhoto: { [weak self] token, image in self?.handlePhoto(image, token: token) },
+      onError: { [weak self] token, error in self?.handleStreamError(error, token: token) })
+    let factory = DATDeviceSessionFactory(
+      wearables: wearables,
+      selector: deviceSelector,
+      callbacks: callbacks)
+    self.sessionManager = DeviceStreamSessionManager(
+      factory: factory,
+      onSessionTerminated: { [weak self] _, failure in
+        self?.handleSessionTerminated(failure)
+      })
   }
 
-  deinit {
+  isolated deinit {
     deviceMonitorTask?.cancel()
-  }
-
-  private func attachListeners() {
-    stateListenerToken = streamSession.statePublisher.listen { [weak self] state in
-      Task { @MainActor [weak self] in
-        self?.updateStatusFromState(state)
-      }
-    }
-
-    videoFrameListenerToken = streamSession.videoFramePublisher.listen { [weak self] videoFrame in
-      Task { @MainActor [weak self] in
-        guard let self else { return }
-        guard let image = videoFrame.makeUIImage() else { return }
-        self.currentVideoFrame = image
-        if !self.hasReceivedFirstFrame { self.hasReceivedFirstFrame = true }
-        // Forward to JARVIS for detection only when enabled. The uploader
-        // self-throttles to ~1 fps and drops frames while a prior upload is in
-        // flight, so calling per-frame is safe.
-        if self.detectionUploadsEnabled {
-          Task { await self.uploader.submit(image: image) }
-        }
-      }
-    }
-
-    errorListenerToken = streamSession.errorPublisher.listen { [weak self] error in
-      Task { @MainActor [weak self] in
-        guard let self else { return }
-        // Suppress "no device" noise before the user starts streaming.
-        if self.streamingStatus == .stopped {
-          if case .deviceNotConnected = error { return }
-          if case .deviceNotFound = error { return }
-        }
-        self.show(self.formatStreamingError(error))
-      }
-    }
-
-    // High-resolution still capture (Note Buddy).
-    photoDataListenerToken = streamSession.photoDataPublisher.listen { [weak self] photoData in
-      Task { @MainActor [weak self] in
-        guard let self else { return }
-        if let image = UIImage(data: photoData.data) {
-          self.capturedPhoto = image
-          self.capturedPhotoVersion += 1
-        }
-      }
-    }
-
-    updateStatusFromState(streamSession.state)
+    sessionManager?.stop()
   }
 
   /// Trigger a high-resolution photo. Result arrives on `capturedPhoto`.
   func capturePhoto() {
-    streamSession.capturePhoto(format: .jpeg)
+    sessionManager.capturePhoto()
   }
 
   // MARK: - Permission
@@ -162,14 +118,14 @@ final class StreamSessionViewModel: ObservableObject {
         show("Camera permission denied. Grant it in the Meta AI app / Settings.")
         return
       }
-      await streamSession.start()
+      try await sessionManager.start()
     } catch {
-      show("Permission error: \(error.localizedDescription)")
+      show("Unable to start camera: \(error.localizedDescription)")
     }
   }
 
   func stopStreaming() async {
-    await streamSession.stop()
+    sessionManager.stop()
   }
 
   /// Send the CURRENT frame for a one-shot, consent-gated identification.
@@ -181,12 +137,49 @@ final class StreamSessionViewModel: ObservableObject {
 
   // MARK: - Helpers
 
-  private func updateStatusFromState(_ state: StreamSessionState) {
+  private func handleVideoFrame(_ image: UIImage, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
+    currentVideoFrame = image
+    if !hasReceivedFirstFrame { hasReceivedFirstFrame = true }
+    if detectionUploadsEnabled {
+      Task { await uploader.submit(image: image) }
+    }
+  }
+
+  private func handlePhoto(_ image: UIImage, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
+    capturedPhoto = image
+    capturedPhotoVersion += 1
+  }
+
+  private func handleStreamError(_ error: StreamError, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
+    if streamingStatus == .stopped {
+      if case .deviceNotConnected = error { return }
+      if case .deviceNotFound = error { return }
+    }
+    show(formatStreamingError(error))
+  }
+
+  private func handleStreamState(_ state: StreamState, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
+    updateStatusFromState(state, token: token)
+  }
+
+  private func handleSessionTerminated(_ failure: ManagedSessionFailure?) {
+    currentVideoFrame = nil
+    hasReceivedFirstFrame = false
+    streamingStatus = .stopped
+    if let failure { show(failure.localizedDescription) }
+  }
+
+  private func updateStatusFromState(_ state: StreamState, token: UUID) {
     switch state {
     case .stopped:
       currentVideoFrame = nil
       hasReceivedFirstFrame = false
       streamingStatus = .stopped
+      sessionManager.stop(token: token)
     case .waitingForDevice, .starting, .stopping, .paused:
       streamingStatus = .waiting
     case .streaming:
@@ -206,17 +199,7 @@ final class StreamSessionViewModel: ObservableObject {
     errorMessage = ""
   }
 
-  private func formatStreamingError(_ error: StreamSessionError) -> String {
-    switch error {
-    case .internalError: return "An internal error occurred. Please try again."
-    case .deviceNotFound: return "Device not found. Ensure your glasses are connected."
-    case .deviceNotConnected: return "Device not connected. Check your connection and retry."
-    case .timeout: return "The operation timed out. Please try again."
-    case .videoStreamingError: return "Video streaming failed. Please try again."
-    case .audioStreamingError: return "Audio streaming failed. Please try again."
-    case .permissionDenied: return "Camera permission denied. Grant it in Settings."
-    case .hingesClosed: return "The glasses hinges are closed. Open them and try again."
-    @unknown default: return "An unknown streaming error occurred."
-    }
+  private func formatStreamingError(_ error: StreamError) -> String {
+    error.localizedDescription
   }
 }
