@@ -1,8 +1,11 @@
 # JARVIS Meta Bridge (iOS)
 
-A SwiftUI iPhone companion app that streams frames from **Ray-Ban Meta glasses** to
-the JARVIS backend using Meta's official **Wearables Device Access Toolkit (DAT)**
-iOS SDK.
+A SwiftUI iPhone companion app that uses **Ray-Ban Meta glasses** with the JARVIS
+backend through Meta's official **Wearables Device Access Toolkit (DAT)** iOS SDK.
+
+**Identify Person** is a consent-gated one-shot flow: one tap captures one JPEG,
+sends one targeted request, and shows transient visual results on Meta Ray-Ban
+Display glasses. It never starts the periodic uploader or a live preview.
 
 ```
 Ray-Ban Meta glasses camera
@@ -11,12 +14,11 @@ Ray-Ban Meta glasses camera
   → JARVIS  POST /api/capture/frame
 ```
 
-Each frame is JPEG-encoded (~0.70 quality), base64-encoded, and POSTed as JSON.
+The other widgets may use their existing stream. Identify Person does not.
 
 > ### Privacy / safety
-> Normal streaming performs person detection only and always sends **`target:
-> false`**. After obtaining the subject's clear, in-the-moment consent, the user
-> can tap **Identify person** to send one current frame with **`target: true`**.
+> After obtaining the subject's clear, in-the-moment consent, the user can tap
+> **Identify Person** to capture and send exactly one JPEG with **`target: true`**.
 > That explicit, consent-gated action is the only identification path; it is never
 > sent continuously, automatically, or on a timer. See
 > [`JarvisFrameUploader.swift`](JarvisMetaBridge/JarvisFrameUploader.swift).
@@ -52,7 +54,7 @@ The home screen is a hub of widgets built on `glasses frame → JARVIS AI → re
 
 | # | Widget | What it does | Backend endpoint | Needs |
 |---|--------|--------------|------------------|-------|
-| 1 | **Identify Person** | Streams frames for person detection; a consent-gated one-shot identifies the person in view | `POST /api/capture/frame` | (detection stack) |
+| 1 | **Identify Person** | Captures one consent-gated photo and presents a visual result | `POST /api/capture/frame` | PimEyes session for live identity |
 | 2 | **Scene Describe** | One frame → Gemini caption ("what am I looking at?"), read aloud | `POST /api/vision/describe` | `GEMINI_API_KEY` |
 | 3 | **Read It** | One frame → OCR visible text verbatim → read aloud (TTS) | `POST /api/vision/describe` | `GEMINI_API_KEY` |
 | 4 | **Note Buddy** | High-res photo of a document → structured study note (title, summary, key points), saved to a local deck | `POST /api/vision/note` | `GEMINI_API_KEY` |
@@ -238,29 +240,28 @@ turns green when the SDK auto-selects an active device.
 
 ### 13. Grant camera permission
 
-Tap **Start Stream**. The first time, the DAT SDK requests camera access for the
-glasses. Approve it — the **Camera permission** row turns green.
+Tap **Identify Person** and confirm consent. The first time, DAT requests camera
+access through Meta AI. Approve it, return to JARVIS, and tap again.
 
-### 14. Start the stream
+### 14. Capture once
 
-After permission is granted, streaming begins automatically. Live frames appear in
-the preview box, and the app starts uploading ~1 frame/sec to JARVIS.
+After permission is granted, each confirmed tap starts a short-lived camera
+capability, captures one JPEG, and stops it. No live preview or periodic upload runs.
 
 ### 15. Identify a consenting person
 
 Use this manual sequence on the physical iPhone:
 
 1. Tap **Connect glasses (Meta AI)** and wait for registration and an active device.
-2. Tap **Start Stream** and grant camera permission when prompted.
-3. Confirm live preview and detection-only uploads are running.
-4. Obtain the person-in-view's clear, in-the-moment consent.
-5. Tap **Identify person (with consent)** and confirm the consent dialog.
-6. Keep streaming while the app polls. The status progresses from requesting to
+2. Obtain the person-in-view's clear, in-the-moment consent.
+3. Tap **Identify Person** and confirm the consent dialog.
+4. Grant camera permission through Meta AI if prompted, then retry once.
+5. Keep the app open while it polls. The status progresses from requesting to
    identifying, then shows the resolved name or an actionable failure. If no
    terminal response arrives within 90 seconds, the button becomes available to retry.
 
-The stream continues to send `target: false`; only step 5 sends one `target: true`
-frame. Do not use identification continuously or without consent.
+Each confirmed attempt sends exactly one `target: true` JPEG. Do not use
+identification continuously or without consent.
 
 ### 16. Confirm frames reach JARVIS
 

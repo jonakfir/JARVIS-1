@@ -13,6 +13,7 @@ import UIKit
 struct ContentView: View {
   @ObservedObject var wearablesViewModel: WearablesViewModel
   @StateObject private var streamViewModel: StreamSessionViewModel
+  @StateObject private var identificationViewModel: OneShotIdentificationViewModel
   @StateObject private var config = AppConfig.shared
 
   init(wearables: WearablesInterface, wearablesViewModel: WearablesViewModel) {
@@ -20,6 +21,13 @@ struct ContentView: View {
     let uploader = JarvisFrameUploader(config: .shared)
     _streamViewModel = StateObject(
       wrappedValue: StreamSessionViewModel(wearables: wearables, uploader: uploader))
+    let capture = OneShotCaptureCoordinator(factory: DATOneShotCaptureSessionFactory(wearables: wearables))
+    let display = GlassesDisplayPresenter(display: DATIdentityDisplayConnection(wearables: wearables))
+    _identificationViewModel = StateObject(wrappedValue: OneShotIdentificationViewModel(
+      captureJPEG: { try await capture.captureJPEG() }, cancelCapture: { capture.cancel() },
+      submit: { data in try await IdentificationAPIClient(config: .shared).submit(jpegData: data) },
+      status: { id in try await IdentificationAPIClient(config: .shared).status(requestID: id) },
+      showCard: { card in try await display.showCard(card) }, cancelDisplay: { display.cancel() }))
   }
 
   private let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
@@ -36,6 +44,7 @@ struct ContentView: View {
               IdentifyPersonWidgetView(
                 wearablesViewModel: wearablesViewModel,
                 streamViewModel: streamViewModel,
+                identificationViewModel: identificationViewModel,
                 config: config)
             } label: {
               WidgetCard(
@@ -142,10 +151,14 @@ struct ContentView: View {
   }
 
   private var identifySubtitle: String {
-    switch streamViewModel.streamingStatus {
-    case .streaming: return "Streaming · consent-gated"
-    case .waiting: return "Connecting…"
-    case .stopped: return "Tap to open"
+    switch identificationViewModel.state {
+    case .capturing: return "Capturing one photo…"
+    case .identifying, .enriching: return "Identifying…"
+    case .nameDisplayed(let name): return name
+    case .enrichedCardDisplayed(let name, _, _): return name
+    case .notIdentified: return "Not identified"
+    case .failed: return "Needs attention"
+    case .idle: return "Tap to identify once"
     }
   }
 }
