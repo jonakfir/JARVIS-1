@@ -12,7 +12,7 @@ from capture.frame_handler import FrameHandler
 from capture.frame_handler import Identification as TrackedIdentification
 from identification.models import FaceDetectionResult, FaceSearchResult
 from main import app
-from schemas import Identification
+from schemas import FrameProcessedResponse, Identification
 
 client = TestClient(app)
 
@@ -77,6 +77,29 @@ async def test_target_uses_largest_bbox_not_largest_encoded_crop(
 
     assert handler._identifications[2].track_id == 2
     assert 1 not in handler._identifications
+
+
+@pytest.mark.asyncio
+async def test_target_without_yolo_track_id_returns_valid_identification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = FrameHandler()
+    detections = [
+        {"bbox": [0.0, 0.0, 80.0, 100.0], "confidence": 0.90, "track_id": None},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    result = await handler.process_frame(
+        VALID_FRAME_B64, 1, "meta_glasses_ios", target=True,
+    )
+
+    response = FrameProcessedResponse(**result)
+    assert response.identifications[0].track_id == -1
 
 
 @pytest.mark.asyncio

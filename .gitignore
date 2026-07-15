@@ -5,6 +5,7 @@
 .env
 .env.*
 !.env.example
+ios/JarvisMetaBridge/Config/JarvisMetaBridge.local.xcconfig
 
 # Node / Next.js
 node_modules/

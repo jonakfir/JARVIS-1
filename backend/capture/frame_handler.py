@@ -113,7 +113,12 @@ class FrameHandler:
                 )
                 crop_b64 = crops[best_idx]
                 det = detections[best_idx]
-                tid = det.get("track_id", -1)
+                # YOLO may detect a person before its tracker assigns an ID.
+                # Identification responses require an integer, so use the
+                # existing sentinel until a real track ID becomes available.
+                tid = det.get("track_id")
+                if tid is None:
+                    tid = -1
 
                 self._spawned.add(tid)
                 ident = Identification(tid)

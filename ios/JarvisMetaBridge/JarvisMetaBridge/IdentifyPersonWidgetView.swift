@@ -24,8 +24,8 @@ struct IdentifyPersonWidgetView: View {
     ScrollView {
       VStack(spacing: 16) {
         statusCard
-        preview
         controls
+        preview
         uploadCard
         errorsCard
       }
