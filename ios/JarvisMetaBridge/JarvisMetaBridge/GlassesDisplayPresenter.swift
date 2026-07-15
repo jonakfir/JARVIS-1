@@ -112,6 +112,16 @@ final class GlassesDisplayPresenter {
   }
   func showNotIdentified() async throws { try await show(.notIdentified, clears: true) }
 
+  func showCard(_ card: IdentityDisplayCard) async throws {
+    switch card {
+    case .identifying: try await showIdentifying()
+    case .name(let name): try await showName(name)
+    case .enriched(let name, let role, let company):
+      try await showEnriched(name: name, role: role, company: company)
+    case .notIdentified: try await showNotIdentified()
+    }
+  }
+
   func clear() async throws {
     generation += 1
     let clearGeneration = generation

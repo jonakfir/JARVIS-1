@@ -22,6 +22,7 @@ final class OneShotIdentificationViewModel: ObservableObject {
   @Published private(set) var state: OneShotIdentificationUIState = .idle
   @Published private(set) var diagnosticMessage: String?
   @Published private(set) var isBusy = false
+  var isPrimaryActionEnabled: Bool { !isBusy }
 
   private let captureJPEG: Capture
   private let cancelCapture: @MainActor () -> Void
