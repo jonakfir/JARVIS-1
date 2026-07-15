@@ -18,21 +18,39 @@ from identification.search_manager import FaceSearchManager
 class Identification:
     """Tracks the state of a single face identification attempt."""
 
-    __slots__ = ("track_id", "status", "name", "person_id", "error")
+    __slots__ = (
+        "request_id",
+        "track_id",
+        "status",
+        "name",
+        "person_id",
+        "linkedin_url",
+        "job_title",
+        "company",
+        "error",
+    )
 
-    def __init__(self, track_id: int) -> None:
+    def __init__(self, track_id: int, request_id: str | None = None) -> None:
+        self.request_id = request_id or f"ident_{uuid4().hex}"
         self.track_id = track_id
         self.status: str = "identifying"  # identifying | identified | failed
         self.name: str | None = None
         self.person_id: str | None = None
+        self.linkedin_url: str | None = None
+        self.job_title: str | None = None
+        self.company: str | None = None
         self.error: str | None = None
 
     def to_dict(self) -> dict:
         return {
+            "request_id": self.request_id,
             "track_id": self.track_id,
             "status": self.status,
             "name": self.name,
             "person_id": self.person_id,
+            "linkedin_url": self.linkedin_url,
+            "job_title": self.job_title,
+            "company": self.company,
             "error": self.error,
         }
 
@@ -57,6 +75,7 @@ class FrameHandler:
         self._face_searcher = face_searcher
         self._seen_tracks: set[int] = set()
         self._identifications: dict[int, Identification] = {}
+        self._identifications_by_request_id: dict[str, Identification] = {}
         # Track IDs that already had identification spawned (prevent double-spawn)
         self._spawned: set[int] = set()
         # Global lock: only one PimEyes search at a time
@@ -88,6 +107,9 @@ class FrameHandler:
             if tid is not None and tid not in self._seen_tracks:
                 self._seen_tracks.add(tid)
                 new_detections.append(det)
+
+        identification_admitted = False
+        request_id: str | None = None
 
         # Step 3: Only spawn face identification when user explicitly targets
         # Regular polling frames just do YOLO detection — no PimEyes spend
@@ -123,7 +145,10 @@ class FrameHandler:
                 self._spawned.add(tid)
                 ident = Identification(tid)
                 self._identifications[tid] = ident
+                self._identifications_by_request_id[ident.request_id] = ident
                 self._search_in_progress = True
+                identification_admitted = True
+                request_id = ident.request_id
                 logger.info("TARGET: spawning identification for track_id={}", tid)
                 asyncio.create_task(self._identify_face(ident, crop_b64, frame_b64))
         elif target and self._search_in_progress:
@@ -141,9 +166,15 @@ class FrameHandler:
             "detections": detections,
             "new_persons": len(new_detections),
             "identifications": identifications,
+            "identification_admitted": identification_admitted,
+            "request_id": request_id,
             "timestamp": timestamp,
             "source": source,
         }
+
+    def get_identification(self, request_id: str) -> Identification | None:
+        """Return the latest state for one admitted identification request."""
+        return self._identifications_by_request_id.get(request_id)
 
     @staticmethod
     def _upscale_for_pimeyes(image_bytes: bytes, min_dim: int = 480) -> bytes:

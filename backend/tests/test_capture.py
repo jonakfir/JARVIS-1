@@ -8,11 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+import main
 from capture.frame_handler import FrameHandler
 from capture.frame_handler import Identification as TrackedIdentification
 from identification.models import FaceDetectionResult, FaceSearchResult
 from main import app
-from schemas import FrameProcessedResponse, Identification
+from schemas import FrameProcessedResponse, Identification, IdentificationStatusResponse
 
 client = TestClient(app)
 
@@ -34,16 +35,21 @@ def test_identification_to_dict_includes_error() -> None:
     identification.error = "PimEyes cookies expired"
 
     assert identification.to_dict() == {
+        "request_id": identification.request_id,
         "track_id": 7,
         "status": "failed",
         "name": None,
         "person_id": None,
+        "linkedin_url": None,
+        "job_title": None,
+        "company": None,
         "error": "PimEyes cookies expired",
     }
 
 
 def test_identification_schema_serializes_optional_error() -> None:
     identification = Identification(
+        request_id="ident_test",
         track_id=7,
         status="failed",
         error="PimEyes cookies expired",
@@ -100,6 +106,81 @@ async def test_target_without_yolo_track_id_returns_valid_identification(
 
     response = FrameProcessedResponse(**result)
     assert response.identifications[0].track_id == -1
+
+
+@pytest.mark.asyncio
+async def test_target_admission_returns_request_id_and_supports_status_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = FrameHandler()
+    detections = [
+        {"bbox": [0.0, 0.0, 80.0, 100.0], "confidence": 0.90, "track_id": 4},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    result = await handler.process_frame(
+        VALID_FRAME_B64, 1, "meta_glasses_ios", target=True,
+    )
+
+    assert result["identification_admitted"] is True
+    request_id = result["identifications"][0]["request_id"]
+    assert isinstance(request_id, str) and request_id
+    assert handler.get_identification(request_id).status == "identifying"
+
+
+@pytest.mark.asyncio
+async def test_second_target_is_not_admitted_while_identification_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blocker = asyncio.Event()
+    handler = FrameHandler()
+    detections = [
+        {"bbox": [0.0, 0.0, 80.0, 100.0], "confidence": 0.90, "track_id": 4},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    async def blocked_identification(*_: object) -> None:
+        await blocker.wait()
+
+    monkeypatch.setattr(handler, "_identify_face", blocked_identification)
+
+    first = await handler.process_frame(VALID_FRAME_B64, 1, target=True)
+    second = await handler.process_frame(VALID_FRAME_B64, 2, target=True)
+
+    assert first["identification_admitted"] is True
+    assert second["identification_admitted"] is False
+    assert len(handler._identifications_by_request_id) == 1
+    blocker.set()
+    await asyncio.sleep(0)
+
+
+def test_identification_status_endpoint_is_request_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = FrameHandler()
+    identification = TrackedIdentification(track_id=7)
+    handler._identifications_by_request_id[identification.request_id] = identification
+    monkeypatch.setattr(main, "frame_handler", handler)
+
+    response = client.get(
+        f"/api/capture/identification/{identification.request_id}",
+    )
+
+    assert response.status_code == 200
+    payload = IdentificationStatusResponse(**response.json())
+    assert payload.request_id == identification.request_id
+    assert payload.status == "identifying"
+    assert client.get("/api/capture/identification/missing").status_code == 404
 
 
 @pytest.mark.asyncio
