@@ -2,6 +2,8 @@
 # DECISION: Simple waterfall: PimEyes first (best for faces), reverse image search fallback
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from loguru import logger
 
 from config import Settings
@@ -25,7 +27,12 @@ class FaceSearchManager:
     def configured(self) -> bool:
         return True
 
-    async def search_face(self, request: FaceSearchRequest) -> FaceSearchResult:
+    async def search_face(
+        self,
+        request: FaceSearchRequest,
+        *,
+        pimeyes_only: bool = False,
+    ) -> FaceSearchResult:
         """Search for a face: PimEyes first, reverse image search fallback."""
 
         # Tier 1: PimEyes (purpose-built face search)
@@ -35,6 +42,10 @@ class FaceSearchManager:
         if pimeyes_result.success and pimeyes_result.matches:
             logger.info("PimEyes found {} matches, skipping reverse search",
                         len(pimeyes_result.matches))
+            return pimeyes_result
+
+        if pimeyes_only:
+            logger.info("PimEyes-only policy active, reverse search disabled")
             return pimeyes_result
 
         # Tier 2: Reverse image search (Google, Yandex, Bing)
@@ -78,8 +89,12 @@ class FaceSearchManager:
         # Return the most frequent name
         return max(name_counts, key=name_counts.get)  # type: ignore[arg-type]
 
-    def profile_urls_from_results(self, result: FaceSearchResult) -> list[str]:
-        """Extract social profile URLs from search results."""
+    def profile_urls_from_results(
+        self,
+        result: FaceSearchResult,
+        person_name: str | None = None,
+    ) -> list[str]:
+        """Extract social URLs, optionally limited to one exact resolved name."""
         social_domains = {
             "linkedin.com", "twitter.com", "x.com", "instagram.com",
             "facebook.com", "github.com", "tiktok.com",
@@ -87,8 +102,17 @@ class FaceSearchManager:
         urls: list[str] = []
         seen: set[str] = set()
         for match in result.matches:
+            if person_name is not None and (
+                match.person_name is None
+                or match.person_name.strip().casefold() != person_name.strip().casefold()
+            ):
+                continue
             if match.url and match.url not in seen:
-                if any(domain in match.url for domain in social_domains):
+                hostname = urlparse(match.url).hostname or ""
+                if any(
+                    hostname == domain or hostname.endswith(f".{domain}")
+                    for domain in social_domains
+                ):
                     urls.append(match.url)
                     seen.add(match.url)
         return urls

@@ -38,6 +38,7 @@ from schemas import (
     FrameProcessedResponse,
     FrameSubmission,
     HealthResponse,
+    IdentificationStatusResponse,
     IdentifyRequest,
     IdentifyResponse,
     ServiceStatus,
@@ -288,6 +289,17 @@ async def capture_frame(submission: FrameSubmission) -> FrameProcessedResponse:
         target=submission.target,
     )
     return FrameProcessedResponse(**result)
+
+
+@app.get(
+    "/api/capture/identification/{request_id}",
+    response_model=IdentificationStatusResponse,
+)
+async def capture_identification_status(request_id: str) -> IdentificationStatusResponse:
+    identification = frame_handler.get_identification(request_id)
+    if identification is None:
+        raise HTTPException(status_code=404, detail="Identification request not found")
+    return IdentificationStatusResponse(**identification.to_dict())
 
 
 @app.post("/api/capture/identify", response_model=IdentifyResponse)

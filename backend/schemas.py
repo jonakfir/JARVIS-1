@@ -58,10 +58,25 @@ class Detection(BaseModel):
 
 
 class Identification(BaseModel):
+    request_id: str
     track_id: int
-    status: str  # "identifying" | "identified" | "failed"
+    status: Literal["identifying", "identified", "failed"]
     name: str | None = None
     person_id: str | None = None
+    linkedin_url: str | None = None
+    job_title: str | None = None
+    company: str | None = None
+    error: str | None = None
+
+
+class IdentificationStatusResponse(BaseModel):
+    request_id: str
+    track_id: int
+    status: Literal["identifying", "identified", "failed"]
+    name: str | None = None
+    linkedin_url: str | None = None
+    job_title: str | None = None
+    company: str | None = None
     error: str | None = None
 
 
@@ -70,6 +85,8 @@ class FrameProcessedResponse(BaseModel):
     detections: list[Detection]
     new_persons: int
     identifications: list[Identification] = Field(default_factory=list)
+    identification_admitted: bool = False
+    request_id: str | None = None
     timestamp: int
     source: str
 
