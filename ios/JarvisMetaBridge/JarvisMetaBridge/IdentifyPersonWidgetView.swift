@@ -19,7 +19,7 @@ struct IdentifyPersonWidgetView: View {
     .sheet(isPresented: $showSettings) { SettingsView(config: config) }
     .confirmationDialog("Identify the person in view?", isPresented: $showConsent,
       titleVisibility: .visible) {
-      Button("They consented — identify") { identificationViewModel.startIdentification() }
+      Button("They consented — identify") { identificationViewModel.confirmConsent() }
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("Only with the person's clear, in-the-moment consent. This captures and sends one photo to JARVIS.")
@@ -53,7 +53,9 @@ struct IdentifyPersonWidgetView: View {
           Label("Connect glasses (Meta AI)", systemImage: "link").frame(maxWidth: .infinity)
         }.buttonStyle(.borderedProminent)
       } else {
-        Button(role: .destructive) { wearablesViewModel.disconnectGlasses() } label: {
+        Button(role: .destructive) {
+          identificationViewModel.disconnectGlasses { wearablesViewModel.disconnectGlasses() }
+        } label: {
           Label("Disconnect", systemImage: "link.badge.plus").frame(maxWidth: .infinity)
         }.buttonStyle(.bordered)
       }

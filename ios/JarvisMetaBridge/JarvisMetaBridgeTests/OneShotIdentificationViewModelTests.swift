@@ -74,6 +74,54 @@ final class OneShotIdentificationViewModelTests: XCTestCase {
     XCTAssertEqual(harness.displayCancelCount, 1)
     XCTAssertEqual(model.state, .idle)
   }
+
+  func testCancelWhileIdentifyingCardIsSuspendedNeverCapturesOrAdvancesState() async {
+    let harness = IdentificationHarness(results: [.fixture(status: .identifying)])
+    harness.suspendIdentifyingCard = true
+    let model = harness.makeModel()
+    model.startIdentification()
+    await harness.waitUntil { harness.cards == [.identifying] }
+
+    model.cancel()
+    harness.suspendIdentifyingCard = false
+    await Task.yield()
+
+    XCTAssertEqual(harness.captureCount, 0)
+    XCTAssertEqual(model.state, .idle)
+  }
+
+  func testCanceledStatusCannotPublishStaleName() async {
+    let harness = IdentificationHarness(results: [.fixture(status: .identified, name: "Old Name")])
+    harness.suspendStatus = true
+    let model = harness.makeModel()
+    model.startIdentification()
+    await harness.waitUntil { harness.statusCount == 1 }
+
+    model.cancel()
+    harness.suspendStatus = false
+    await Task.yield()
+
+    XCTAssertEqual(model.state, .idle)
+    XCTAssertFalse(harness.cards.contains(.name("Old Name")))
+  }
+
+  func testCanceledAttemptCompletionCannotLoseOwnershipOfImmediateRestart() async {
+    let harness = IdentificationHarness(results: [.fixture(status: .identifying)])
+    harness.suspendCapture = true
+    let model = harness.makeModel()
+    model.startIdentification()
+    await harness.waitUntil { harness.captureCount == 1 }
+    model.cancel()
+
+    model.startIdentification()
+    await harness.waitUntil { harness.captureCount == 2 }
+    await Task.yield() // allow the canceled first task to finish its cleanup
+    model.cancel()
+
+    XCTAssertEqual(harness.captureCancelCount, 2)
+    XCTAssertEqual(model.state, .idle)
+    XCTAssertFalse(model.isBusy)
+  }
 }
 
 @MainActor
@@ -86,6 +134,8 @@ private final class IdentificationHarness {
   var displayCancelCount = 0
   var cards: [IdentityDisplayCard] = []
   var suspendCapture = false
+  var suspendIdentifyingCard = false
+  var suspendStatus = false
   var advanceSecondsPerSleep: TimeInterval = 1
   var now = Date(timeIntervalSince1970: 0)
 
@@ -108,9 +158,15 @@ private final class IdentificationHarness {
         guard let self else { throw CancellationError() }
         let index = min(self.statusCount, self.results.count - 1)
         self.statusCount += 1
+        while self.suspendStatus { try await Task.sleep(for: .milliseconds(1)) }
         return self.results[index]
       },
-      showCard: { [weak self] card in self?.cards.append(card) },
+      showCard: { [weak self] card in
+        self?.cards.append(card)
+        while self?.suspendIdentifyingCard == true && card == .identifying {
+          try await Task.sleep(for: .milliseconds(1))
+        }
+      },
       cancelDisplay: { [weak self] in self?.displayCancelCount += 1 },
       sleep: { [weak self] _ in self?.now.addTimeInterval(self?.advanceSecondsPerSleep ?? 1) },
       now: { [weak self] in self?.now ?? .distantFuture })
@@ -118,6 +174,10 @@ private final class IdentificationHarness {
 
   func waitUntilFinished(_ model: OneShotIdentificationViewModel) async {
     for _ in 0..<100 where model.isBusy { await Task.yield() }
+  }
+
+  func waitUntil(_ condition: () -> Bool) async {
+    for _ in 0..<100 where !condition() { await Task.yield() }
   }
 }
 

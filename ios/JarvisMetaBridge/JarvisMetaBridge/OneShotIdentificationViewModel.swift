@@ -34,6 +34,7 @@ final class OneShotIdentificationViewModel: ObservableObject {
   private let now: @MainActor () -> Date
   private let deadline: TimeInterval
   private var attempt: Task<Void, Never>?
+  private var currentAttemptID: UUID?
 
   init(
     captureJPEG: @escaping Capture,
@@ -59,17 +60,24 @@ final class OneShotIdentificationViewModel: ObservableObject {
 
   func startIdentification() {
     guard !isBusy else { return }
+    let attemptID = UUID()
+    currentAttemptID = attemptID
     isBusy = true
     diagnosticMessage = nil
     attempt = Task { @MainActor [weak self] in
       guard let self else { return }
-      await self.runAttempt()
-      if !Task.isCancelled { self.isBusy = false }
+      await self.runAttempt(attemptID: attemptID)
+      guard self.currentAttemptID == attemptID else { return }
+      self.isBusy = false
       self.attempt = nil
+      self.currentAttemptID = nil
     }
   }
 
+  func confirmConsent() { startIdentification() }
+
   func cancel() {
+    currentAttemptID = nil
     attempt?.cancel()
     attempt = nil
     cancelCapture()
@@ -78,24 +86,33 @@ final class OneShotIdentificationViewModel: ObservableObject {
     state = .idle
   }
 
-  private func runAttempt() async {
+  func disconnectGlasses(_ disconnect: @MainActor () -> Void) {
+    cancel()
+    disconnect()
+  }
+
+  private func runAttempt(attemptID: UUID) async {
     do {
       try await showCard(.identifying)
+      try validate(attemptID)
       state = .capturing
       let jpeg = try await captureJPEG()
-      try Task.checkCancellation()
+      try validate(attemptID)
       let ticket = try await submit(jpeg)
+      try validate(attemptID)
       state = .identifying
       let expiresAt = now().addingTimeInterval(deadline)
       var displayedName: String?
 
       while now() < expiresAt {
-        try Task.checkCancellation()
+        try validate(attemptID)
         let result = try await status(ticket.requestID)
+        try validate(attemptID)
         switch result.status {
         case .failed:
           diagnosticMessage = result.error ?? "Identification failed"
           try await showCard(.notIdentified)
+          try validate(attemptID)
           state = .notIdentified
           return
         case .identifying:
@@ -105,35 +122,48 @@ final class OneShotIdentificationViewModel: ObservableObject {
           if displayedName == nil {
             displayedName = name
             try await showCard(.name(name))
+            try validate(attemptID)
             state = .nameDisplayed(name)
           }
           if let role = useful(result.jobTitle), let company = useful(result.company) {
             try await showCard(.enriched(name: name, role: role, company: company))
+            try validate(attemptID)
             state = .enrichedCardDisplayed(name: name, role: role, company: company)
             return
           }
           state = .enriching(name)
         }
         try await sleep(.seconds(1))
+        try validate(attemptID)
       }
 
+      try validate(attemptID)
       if let displayedName { state = .nameDisplayed(displayedName) }
       else {
         diagnosticMessage = "Identification timed out"
         try await showCard(.notIdentified)
+        try validate(attemptID)
         state = .notIdentified
       }
     } catch is CancellationError {
       return
     } catch {
+      guard currentAttemptID == attemptID, !Task.isCancelled else { return }
       diagnosticMessage = error.localizedDescription
       do {
         try await showCard(.notIdentified)
+        try validate(attemptID)
         state = .notIdentified
       } catch {
+        guard currentAttemptID == attemptID, !Task.isCancelled else { return }
         state = .failed(diagnosticMessage ?? "Identification failed")
       }
     }
+  }
+
+  private func validate(_ attemptID: UUID) throws {
+    try Task.checkCancellation()
+    guard currentAttemptID == attemptID else { throw CancellationError() }
   }
 
   private func useful(_ value: String?) -> String? {
