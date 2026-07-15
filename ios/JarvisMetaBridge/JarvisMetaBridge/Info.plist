@@ -35,12 +35,11 @@
 		</dict>
 	</array>
 	<!-- Meta Wearables Device Access Toolkit configuration. -->
-	<!-- AppLinkURLScheme must match a scheme in CFBundleURLTypes above. -->
-	<!-- ClientToken / MetaAppID come from your Meta app; set them in JarvisMetaBridge.xcconfig. -->
+	<!-- Values must match the project registered in Wearables Developer Center. -->
 	<key>MWDAT</key>
 	<dict>
 		<key>AppLinkURLScheme</key>
-		<string>jarvismetabridge://</string>
+		<string>https://jarvis-meta-bridge-links.vercel.app/meta-wearables/callback</string>
 		<key>ClientToken</key>
 		<string>$(CLIENT_TOKEN)</string>
 		<key>MetaAppID</key>
@@ -48,6 +47,11 @@
 		<key>TeamID</key>
 		<string>$(DEVELOPMENT_TEAM)</string>
 	</dict>
+	<!-- Required so the DAT SDK can detect and open the Meta AI companion app. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fb-viewapp</string>
+	</array>
 	<!-- Allow plaintext HTTP to your Mac on the local network (dev backend). -->
 	<key>NSAppTransportSecurity</key>
 	<dict>

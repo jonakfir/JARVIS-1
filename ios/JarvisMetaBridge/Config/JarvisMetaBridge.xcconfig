@@ -15,8 +15,9 @@ DEVELOPMENT_TEAM = 3K8N98ZS5T
 PRODUCT_BUNDLE_IDENTIFIER = com.jonakfir.JarvisMetaBridge
 
 // --- Meta Wearables DAT credentials ---
-// From your app on the Meta for Developers dashboard (developers.facebook.com).
-// CLIENT_TOKEN: App > Settings > Advanced > Client token.
-// META_APP_ID:  the numeric App ID.
+// Keep real Wearables Developer Center values in the ignored local override.
+// This prevents credentials from being committed to the public repository.
 CLIENT_TOKEN =
 META_APP_ID =
+
+#include? "JarvisMetaBridge.local.xcconfig"

@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "3K8N98ZS5T.com.jonakfir.JarvisMetaBridge"
+        ],
+        "components": [
+          {
+            "/": "/meta-wearables/*",
+            "comment": "Meta Wearables Device Access Toolkit callbacks"
+          }
+        ]
+      }
+    ]
+  }
+}

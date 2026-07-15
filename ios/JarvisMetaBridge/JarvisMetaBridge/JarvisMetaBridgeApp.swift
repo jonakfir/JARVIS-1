@@ -41,6 +41,24 @@ struct JarvisMetaBridgeApp: App {
   var body: some Scene {
     WindowGroup {
       ContentView(wearables: wearables, wearablesViewModel: wearablesViewModel)
+        .onOpenURL { url in
+          handleWearablesCallback(url)
+        }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+          guard let url = activity.webpageURL else { return }
+          handleWearablesCallback(url)
+        }
+    }
+  }
+
+  /// Forward both custom-scheme and HTTPS universal-link callbacks to DAT.
+  private func handleWearablesCallback(_ url: URL) {
+    Task {
+      do {
+        try await wearables.handleUrl(url)
+      } catch {
+        NSLog("[JarvisMetaBridge] Failed to handle Wearables callback: \(error)")
+      }
     }
   }
 }
