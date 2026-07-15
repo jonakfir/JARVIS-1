@@ -240,7 +240,10 @@ async def test_pimeyes_failure_is_visible_and_releases_identification_lock(
     searcher.search_face = AsyncMock(
         return_value=FaceSearchResult(
             success=False,
-            error="PimEyes credentials missing or expired",
+            error=(
+                "PimEyes credentials secret-cookie-value rejected at "
+                "https://private.example/session"
+            ),
         ),
     )
     handler = FrameHandler(
@@ -261,8 +264,95 @@ async def test_pimeyes_failure_is_visible_and_releases_identification_lock(
     await handler.process_frame(VALID_FRAME_B64, 1, "meta_glasses_ios", target=True)
     await wait_for_identification(handler, 1)
 
-    assert handler._identifications[1].error == "PimEyes credentials missing or expired"
+    assert handler._identifications[1].error == "PimEyes unavailable"
+    assert "secret-cookie-value" not in handler._identifications[1].error
+    assert "https://" not in handler._identifications[1].error
+    searcher.search_face.assert_awaited_once()
+    assert searcher.search_face.await_args.kwargs["pimeyes_only"] is True
     assert handler._search_in_progress is False
+
+
+@pytest.mark.asyncio
+async def test_unexpected_identification_error_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    face_detector = MagicMock()
+    face_detector.detect_faces = AsyncMock(
+        side_effect=RuntimeError("token=super-secret https://private.example"),
+    )
+    handler = FrameHandler(
+        face_detector=face_detector,
+        embedder=MagicMock(),
+        face_searcher=MagicMock(),
+    )
+    detections = [
+        {"bbox": [0.0, 0.0, 20.0, 20.0], "confidence": 0.99, "track_id": 1},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    result = await handler.process_frame(VALID_FRAME_B64, 1, target=True)
+    await wait_for_identification(handler, 1)
+
+    identification = handler.get_identification(result["request_id"])
+    assert identification is not None
+    assert identification.error == "Identification failed"
+    assert "super-secret" not in identification.error
+    assert "https://" not in identification.error
+
+
+@pytest.mark.asyncio
+async def test_unrelated_frame_does_not_leak_historical_identification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = FrameHandler()
+    detections = [
+        {"bbox": [0.0, 0.0, 20.0, 20.0], "confidence": 0.99, "track_id": 1},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    targeted = await handler.process_frame(VALID_FRAME_B64, 1, target=True)
+    await wait_for_identification(handler, 1)
+    ordinary = await handler.process_frame(VALID_FRAME_B64, 2, target=False)
+
+    assert targeted["identifications"]
+    assert ordinary["identifications"] == []
+    assert ordinary["request_id"] is None
+
+
+def test_identification_records_expire_after_polling_grace() -> None:
+    now = [1_000.0]
+    handler = FrameHandler(clock=lambda: now[0], identification_ttl_seconds=100.0)
+    identification = TrackedIdentification(track_id=7)
+    handler._store_identification(identification)
+
+    assert handler.get_identification(identification.request_id) is identification
+    now[0] += 101.0
+    assert handler.get_identification(identification.request_id) is None
+
+
+def test_expired_identification_status_returns_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [1_000.0]
+    handler = FrameHandler(clock=lambda: now[0], identification_ttl_seconds=100.0)
+    identification = TrackedIdentification(track_id=7)
+    handler._store_identification(identification)
+    monkeypatch.setattr(main, "frame_handler", handler)
+    now[0] += 101.0
+
+    response = client.get(f"/api/capture/identification/{identification.request_id}")
+
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -294,7 +384,8 @@ async def test_name_is_observable_before_direct_linkedin_enrichment_completes(
     ]
     enricher = MagicMock()
 
-    async def blocked_enrichment(_: str) -> LinkedInRole:
+    async def blocked_enrichment(_: str, *, expected_name: str) -> LinkedInRole:
+        assert expected_name == "Jane Doe"
         enrichment_started.set()
         await release_enrichment.wait()
         return LinkedInRole(job_title="Engineer", company="Acme")
@@ -340,7 +431,10 @@ async def test_name_is_observable_before_direct_linkedin_enrichment_completes(
         searcher.search_face.return_value,
         person_name="Jane Doe",
     )
-    enricher.enrich.assert_awaited_once_with("https://www.linkedin.com/in/jane-doe")
+    enricher.enrich.assert_awaited_once_with(
+        "https://www.linkedin.com/in/jane-doe",
+        expected_name="Jane Doe",
+    )
 
 
 @pytest.mark.asyncio

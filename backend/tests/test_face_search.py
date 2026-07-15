@@ -237,6 +237,31 @@ class TestFaceSearchManager:
         mock_reverse.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_pimeyes_only_failure_never_calls_reverse_search(self) -> None:
+        """Explicit target policy must not fall back to another provider."""
+        from unittest.mock import AsyncMock, patch
+
+        manager = self._make_manager()
+        pimeyes_fail = FaceSearchResult(
+            success=False,
+            error="session rejected at https://private.example/token?secret=value",
+        )
+
+        with (
+            patch.object(
+                manager._pimeyes,
+                "search_face",
+                new_callable=AsyncMock,
+                return_value=pimeyes_fail,
+            ),
+            patch.object(manager._reverse, "search_face", new_callable=AsyncMock) as reverse,
+        ):
+            result = await manager.search_face(_make_request(), pimeyes_only=True)
+
+        assert result is pimeyes_fail
+        reverse.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_falls_back_to_reverse_search(self) -> None:
         """When PimEyes fails, reverse search is used."""
         from unittest.mock import AsyncMock, patch

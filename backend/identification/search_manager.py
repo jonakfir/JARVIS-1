@@ -27,7 +27,12 @@ class FaceSearchManager:
     def configured(self) -> bool:
         return True
 
-    async def search_face(self, request: FaceSearchRequest) -> FaceSearchResult:
+    async def search_face(
+        self,
+        request: FaceSearchRequest,
+        *,
+        pimeyes_only: bool = False,
+    ) -> FaceSearchResult:
         """Search for a face: PimEyes first, reverse image search fallback."""
 
         # Tier 1: PimEyes (purpose-built face search)
@@ -37,6 +42,10 @@ class FaceSearchManager:
         if pimeyes_result.success and pimeyes_result.matches:
             logger.info("PimEyes found {} matches, skipping reverse search",
                         len(pimeyes_result.matches))
+            return pimeyes_result
+
+        if pimeyes_only:
+            logger.info("PimEyes-only policy active, reverse search disabled")
             return pimeyes_result
 
         # Tier 2: Reverse image search (Google, Yandex, Bing)

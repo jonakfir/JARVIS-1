@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 import httpx
 from loguru import logger
@@ -43,8 +43,7 @@ class _TitleMetadataParser(HTMLParser):
         return title or None
 
 
-def parse_role(html: str) -> LinkedInRole | None:
-    """Parse a current role only from unambiguous LinkedIn title metadata."""
+def _parse_profile(html: str) -> tuple[str, LinkedInRole] | None:
     parser = _TitleMetadataParser()
     parser.feed(html)
     title = parser.open_graph_title or parser.document_title
@@ -54,16 +53,23 @@ def parse_role(html: str) -> LinkedInRole | None:
     normalized = re.sub(r"\s*\|\s*LinkedIn\s*$", "", title, flags=re.IGNORECASE).strip()
     if " - " not in normalized:
         return None
-    _, role_and_company = normalized.split(" - ", maxsplit=1)
+    profile_name, role_and_company = normalized.split(" - ", maxsplit=1)
     match = re.fullmatch(r"(?P<role>.+?)\s+at\s+(?P<company>.+)", role_and_company)
     if match is None:
         return None
 
     job_title = match.group("role").strip()
     company = match.group("company").strip()
-    if not job_title or not company:
+    profile_name = profile_name.strip()
+    if not profile_name or not job_title or not company:
         return None
-    return LinkedInRole(job_title=job_title, company=company)
+    return profile_name, LinkedInRole(job_title=job_title, company=company)
+
+
+def parse_role(html: str) -> LinkedInRole | None:
+    """Parse a current role only from unambiguous LinkedIn title metadata."""
+    profile = _parse_profile(html)
+    return profile[1] if profile is not None else None
 
 
 class LinkedInEnricher:
@@ -75,29 +81,61 @@ class LinkedInEnricher:
     @staticmethod
     def is_allowed_profile_url(profile_url: str) -> bool:
         try:
-            parsed = urlparse(profile_url)
+            parsed = urlsplit(profile_url)
+            port = parsed.port
         except ValueError:
             return False
-        if parsed.scheme != "https" or parsed.hostname not in {"linkedin.com", "www.linkedin.com"}:
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in {"linkedin.com", "www.linkedin.com"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or port is not None
+            or bool(parsed.query)
+            or bool(parsed.fragment)
+        ):
             return False
-        path_parts = [part for part in parsed.path.split("/") if part]
-        return len(path_parts) >= 2 and path_parts[0] == "in" and bool(path_parts[1])
+        return re.fullmatch(r"/in/[A-Za-z0-9_-]+/?", parsed.path) is not None
 
-    async def enrich(self, profile_url: str) -> LinkedInRole | None:
-        if not self.is_allowed_profile_url(profile_url):
+    @staticmethod
+    def _canonical_profile_url(profile_url: str) -> str | None:
+        if not LinkedInEnricher.is_allowed_profile_url(profile_url):
+            return None
+        parsed = urlsplit(profile_url)
+        slug = parsed.path.rstrip("/").removeprefix("/in/").casefold()
+        return f"https://linkedin.com/in/{slug}"
+
+    async def enrich(
+        self,
+        profile_url: str,
+        *,
+        expected_name: str,
+    ) -> LinkedInRole | None:
+        supplied_canonical_url = self._canonical_profile_url(profile_url)
+        if supplied_canonical_url is None:
             return None
 
         try:
             if self._client is not None:
                 response = await self._client.get(profile_url)
             else:
-                async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+                async with httpx.AsyncClient(follow_redirects=False, timeout=10.0) as client:
                     response = await client.get(profile_url)
-            response.raise_for_status()
-            if not self.is_allowed_profile_url(str(response.url)):
-                logger.info("LinkedIn profile redirected outside the allowed profile path")
+            if 300 <= response.status_code < 400:
+                logger.info("Direct LinkedIn profile returned a redirect; rejecting")
                 return None
-            return parse_role(response.text)
+            response.raise_for_status()
+            if self._canonical_profile_url(str(response.url)) != supplied_canonical_url:
+                logger.info("LinkedIn response URL did not match supplied profile evidence")
+                return None
+            profile = _parse_profile(response.text)
+            if profile is None:
+                return None
+            profile_name, role = profile
+            if profile_name.strip().casefold() != expected_name.strip().casefold():
+                logger.info("LinkedIn profile name did not match resolved face-search name")
+                return None
+            return role
         except (httpx.HTTPError, ValueError) as exc:
             logger.info("Direct LinkedIn enrichment unavailable: {}", exc)
             return None

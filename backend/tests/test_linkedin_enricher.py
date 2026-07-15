@@ -19,6 +19,8 @@ from identification.search_manager import FaceSearchManager
         ("https://www.linkedin.com/search/results/people/?keywords=Jane", False),
         ("https://example.com/in/jane-doe", False),
         ("https://linkedin.com.evil.example/in/jane-doe", False),
+        ("https://user@linkedin.com/in/jane-doe", False),
+        ("https://linkedin.com:443/in/jane-doe", False),
         ("https://www.linkedin.com/in/", False),
     ],
 )
@@ -53,13 +55,14 @@ async def test_enrich_fetches_only_the_supplied_direct_profile_url() -> None:
     response.text = (
         '<meta property="og:title" content="Jane Doe - Engineer at Acme | LinkedIn">'
     )
+    response.status_code = 200
     response.url = httpx.URL(profile_url)
     response.raise_for_status.return_value = None
     client = MagicMock(spec=httpx.AsyncClient)
     client.get = AsyncMock(return_value=response)
     enricher = LinkedInEnricher(client=client)
 
-    role = await enricher.enrich(profile_url)
+    role = await enricher.enrich(profile_url, expected_name="Jane Doe")
 
     assert role == LinkedInRole(job_title="Engineer", company="Acme")
     client.get.assert_awaited_once_with(profile_url)
@@ -71,8 +74,67 @@ async def test_enrich_rejects_non_profile_url_without_network_request() -> None:
     client.get = AsyncMock()
     enricher = LinkedInEnricher(client=client)
 
-    assert await enricher.enrich("https://linkedin.com/search/results/people") is None
+    assert await enricher.enrich(
+        "https://linkedin.com/search/results/people",
+        expected_name="Jane Doe",
+    ) is None
     client.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "location",
+    [
+        "http://127.0.0.1/private",
+        "https://www.linkedin.com/in/different-person",
+    ],
+)
+async def test_enrich_rejects_every_redirect_without_following(location: str) -> None:
+    profile_url = "https://www.linkedin.com/in/jane-doe"
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = 302
+    response.headers = {"location": location}
+    response.url = httpx.URL(profile_url)
+    client = MagicMock(spec=httpx.AsyncClient)
+    client.get = AsyncMock(return_value=response)
+    enricher = LinkedInEnricher(client=client)
+
+    assert await enricher.enrich(profile_url, expected_name="Jane Doe") is None
+    client.get.assert_awaited_once_with(profile_url)
+
+
+@pytest.mark.asyncio
+async def test_enrich_rejects_mismatched_profile_name() -> None:
+    profile_url = "https://www.linkedin.com/in/jane-doe"
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = 200
+    response.text = (
+        '<meta property="og:title" content="John Doe - Engineer at Acme | LinkedIn">'
+    )
+    response.url = httpx.URL(profile_url)
+    response.raise_for_status.return_value = None
+    client = MagicMock(spec=httpx.AsyncClient)
+    client.get = AsyncMock(return_value=response)
+    enricher = LinkedInEnricher(client=client)
+
+    assert await enricher.enrich(profile_url, expected_name="Jane Doe") is None
+
+
+@pytest.mark.asyncio
+async def test_enrich_rejects_success_response_for_different_canonical_profile() -> None:
+    profile_url = "https://www.linkedin.com/in/jane-doe"
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = 200
+    response.text = (
+        '<meta property="og:title" content="Jane Doe - Engineer at Acme | LinkedIn">'
+    )
+    response.url = httpx.URL("https://www.linkedin.com/in/different-person")
+    response.raise_for_status.return_value = None
+    client = MagicMock(spec=httpx.AsyncClient)
+    client.get = AsyncMock(return_value=response)
+    enricher = LinkedInEnricher(client=client)
+
+    assert await enricher.enrich(profile_url, expected_name="Jane Doe") is None
 
 
 def test_profile_evidence_must_match_the_resolved_name() -> None:
