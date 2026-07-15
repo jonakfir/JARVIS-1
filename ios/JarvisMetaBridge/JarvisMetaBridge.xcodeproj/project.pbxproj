@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		12F6E38CFD90CBF54C7E76B8 /* OneShotCaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFB53F9200DF384A603C8BA /* OneShotCaptureCoordinator.swift */; };
+		16E2DA26A8E121F61C1FD666 /* OneShotCaptureCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9EA0EE333F858ADB85D6F1 /* OneShotCaptureCoordinatorTests.swift */; };
 		2B6ADB22BF7DF67B1432B78E /* IdentificationAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */; };
 		73DB2828A1878717E33F0A94 /* IdentificationAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */; };
 		DA7A0000000000000000001E /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001C /* MWDATCore */; };
@@ -48,6 +50,8 @@
 
 /* Begin PBXFileReference section */
 		3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdentificationAPIClientTests.swift; sourceTree = "<group>"; };
+		3FFB53F9200DF384A603C8BA /* OneShotCaptureCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OneShotCaptureCoordinator.swift; sourceTree = "<group>"; };
+		AB9EA0EE333F858ADB85D6F1 /* OneShotCaptureCoordinatorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OneShotCaptureCoordinatorTests.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000011 /* JarvisMetaBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JarvisMetaBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA7A00000000000000000101 /* JarvisMetaBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisMetaBridgeApp.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000102 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -151,6 +155,7 @@
 				DA7A00000000000000000108 /* Info.plist */,
 				DA7A00000000000000000109 /* JarvisMetaBridge.entitlements */,
 				EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */,
+				3FFB53F9200DF384A603C8BA /* OneShotCaptureCoordinator.swift */,
 			);
 			path = JarvisMetaBridge;
 			sourceTree = "<group>";
@@ -169,6 +174,7 @@
 				DA7A00000000000000000302 /* SmokeTests.swift */,
 				DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */,
 				3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */,
+				AB9EA0EE333F858ADB85D6F1 /* OneShotCaptureCoordinatorTests.swift */,
 			);
 			path = JarvisMetaBridgeTests;
 			sourceTree = "<group>";
@@ -302,6 +308,7 @@
 				DA7A00000000000000000215 /* VoiceInputService.swift in Sources */,
 				DA7A00000000000000000207 /* SettingsView.swift in Sources */,
 				2B6ADB22BF7DF67B1432B78E /* IdentificationAPIClient.swift in Sources */,
+				12F6E38CFD90CBF54C7E76B8 /* OneShotCaptureCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,6 +319,7 @@
 				DA7A00000000000000000301 /* SmokeTests.swift in Sources */,
 				DA7A00000000000000000322 /* DeviceStreamSessionManagerTests.swift in Sources */,
 				73DB2828A1878717E33F0A94 /* IdentificationAPIClientTests.swift in Sources */,
+				16E2DA26A8E121F61C1FD666 /* OneShotCaptureCoordinatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
