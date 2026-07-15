@@ -14,13 +14,15 @@ Change Identify Person from a continuously uploading camera workflow into a deli
 4. The app captures exactly one still image through the Meta Wearables Device Access Toolkit photo-capture API.
 5. The app stops the temporary camera capability/session after capture. It does not start or retain a periodic frame-upload loop.
 6. The app submits the still image once to the JARVIS backend with `target: true`.
-7. When identification resolves:
-   - Show the person's name immediately in the glasses display for three seconds.
+7. While processing, the glasses show **Identifying…** until a terminal identification result replaces it.
+8. When identification resolves:
+   - Show the person's name immediately in one glasses display card.
    - Start or continue LinkedIn enrichment asynchronously.
-   - If a current role is found, show `Role at Company` in a second display card for three seconds.
-   - If no reliable current role is found, do not show a second card.
-8. If no person is detected, face search fails, or identification times out, show **Not identified** for three seconds.
-9. Clear the display after every three-second card. Never speak the result.
+   - If a directly matched LinkedIn profile yields a current role, update the same card to `Name — Role at Company` and restart its three-second visibility window.
+   - If the name-only card has already cleared when enrichment finishes, show the completed `Name — Role at Company` card again for three seconds.
+   - If no directly matched LinkedIn role is found, do not guess and do not show a job update.
+9. If no person is detected, face search fails, or identification times out, show **Not identified** for three seconds.
+10. Clear the result display after its three-second window. Never speak the result.
 
 Only one identification attempt may be active at a time. Repeated taps while an attempt is active are ignored and the action remains visibly disabled.
 
@@ -28,7 +30,7 @@ Only one identification attempt may be active at a time. Repeated taps while an 
 
 The iOS project is currently pinned to Meta Wearables DAT 0.4.0. Display output requires the Display-capable DAT architecture introduced in 0.7.0. Implementation will upgrade to the latest compatible stable DAT release available in the package repository at implementation time, migrate camera APIs as required by the changelog, add the `MWDATDisplay` product, and enable the Device Access Toolkit App Model with `MWDAT.DAMEnabled = true`.
 
-The app will create a device session using a selector constrained to a display-capable device. Camera and display are separate capabilities owned by the same session coordinator:
+The app will create a device session using a selector constrained to a display-capable device. Meta's current photo API requires an active stream capability, so the app briefly starts that capability, captures one JPEG through `capturePhoto(format: .jpeg)`, and stops it after the photo callback. Video frames may exist inside DAT during that short lifecycle but are never submitted to the backend. Camera and display are separate capabilities owned by the same session coordinator:
 
 - `OneShotCaptureCoordinator` owns the temporary still-capture lifecycle and returns JPEG data.
 - `GlassesDisplayPresenter` owns display start/send/clear behavior and enforces the three-second presentation window.
@@ -46,7 +48,7 @@ The backend identification state exposed to iOS is:
 - `identified`: includes a non-empty `name`; may optionally include `job_title` and `company` when already known.
 - `failed`: includes a safe user-facing failure reason for phone diagnostics, while the glasses always show only **Not identified**.
 
-LinkedIn enrichment is best effort and uses only configured, authorized services and publicly available professional information. It must not delay the initial name card. If the existing polling response cannot carry enrichment separately, add a narrowly scoped result endpoint keyed by the admitted identification/capture ID. The client stops polling after a terminal result or 90 seconds.
+LinkedIn enrichment is best effort and uses only configured, authorized services and publicly available professional information. A job may be displayed only when the face-search evidence includes a LinkedIn profile that directly matches the resolved identity. Name-only LinkedIn search results are too ambiguous and must not be displayed. Enrichment must not delay the initial name card. If the existing polling response cannot carry enrichment separately, add a narrowly scoped result endpoint keyed by the admitted identification/capture ID. The client stops polling after a terminal result or 90 seconds.
 
 PimEyes authentication remains an operational prerequisite for real identity lookup. Missing or expired PimEyes credentials produce a terminal failure rather than silently invoking unrelated reverse-search paths.
 
@@ -59,11 +61,11 @@ The phone UI uses these explicit states:
 - `identifying`
 - `nameDisplayed`
 - `enriching`
-- `jobDisplayed`
+- `enrichedCardDisplayed`
 - `notIdentified`
 - `failed`
 
-One-shot capture has a 15-second deadline. Identification and enrichment share a 90-second overall deadline, but the name is displayed as soon as it becomes available. Each glasses card is cleared exactly three seconds after it is successfully sent. A newer card cancels the prior clear task so an old timer cannot erase a newer result.
+One-shot capture has a 15-second deadline. Identification and enrichment share a 90-second overall deadline, but the name is displayed as soon as it becomes available. The initial name card clears three seconds after it is sent. An enrichment update replaces or re-presents that same card with both name and role, then starts a fresh three-second clear timer. A newer card cancels the prior clear task so an old timer cannot erase a newer result.
 
 Stopping the screen, disconnecting the glasses, or starting a new valid attempt cancels outstanding tasks and clears the display.
 
@@ -94,7 +96,8 @@ Automated verification will cover:
 - One tap produces one capture and one `target: true` backend submission.
 - No periodic uploader starts during one-shot identification.
 - A name is displayed before LinkedIn enrichment completes.
-- A job card is displayed only when both role and company (or a useful role string) are present.
+- A card is updated with a job only when the face-search evidence supplies a directly matching LinkedIn profile and a useful current role.
+- A late LinkedIn result re-presents the combined name-and-job card for three seconds.
 - Each card clears after three seconds, and stale clear tasks cannot erase newer cards.
 - Failure paths display **Not identified** and never invoke audio.
 - Null YOLO tracking IDs serialize as the integer sentinel.
