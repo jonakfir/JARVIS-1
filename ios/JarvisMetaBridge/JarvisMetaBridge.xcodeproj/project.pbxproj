@@ -7,10 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		07681F0365BE239EBC568922 /* GlassesDisplayPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C91F17E7598D21EC6751279 /* GlassesDisplayPresenter.swift */; };
 		12F6E38CFD90CBF54C7E76B8 /* OneShotCaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FFB53F9200DF384A603C8BA /* OneShotCaptureCoordinator.swift */; };
 		16E2DA26A8E121F61C1FD666 /* OneShotCaptureCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9EA0EE333F858ADB85D6F1 /* OneShotCaptureCoordinatorTests.swift */; };
 		2B6ADB22BF7DF67B1432B78E /* IdentificationAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */; };
 		73DB2828A1878717E33F0A94 /* IdentificationAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */; };
+		ADD9E244D87C7B66A7CC1DF2 /* GlassesDisplayPresenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8E74ED1273054B1F28A934 /* GlassesDisplayPresenterTests.swift */; };
+		C9629111286F9E1FE7536631 /* IdentifyPersonDisplayCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4637D9000B05DDCF65D3B53 /* IdentifyPersonDisplayCard.swift */; };
 		DA7A0000000000000000001E /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001C /* MWDATCore */; };
 		DA7A0000000000000000001F /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001D /* MWDATCamera */; };
 		DA7A00000000000000000201 /* JarvisMetaBridgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000101 /* JarvisMetaBridgeApp.swift */; };
@@ -49,9 +52,12 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3C91F17E7598D21EC6751279 /* GlassesDisplayPresenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlassesDisplayPresenter.swift; sourceTree = "<group>"; };
 		3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdentificationAPIClientTests.swift; sourceTree = "<group>"; };
 		3FFB53F9200DF384A603C8BA /* OneShotCaptureCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OneShotCaptureCoordinator.swift; sourceTree = "<group>"; };
+		8D8E74ED1273054B1F28A934 /* GlassesDisplayPresenterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlassesDisplayPresenterTests.swift; sourceTree = "<group>"; };
 		AB9EA0EE333F858ADB85D6F1 /* OneShotCaptureCoordinatorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OneShotCaptureCoordinatorTests.swift; sourceTree = "<group>"; };
+		B4637D9000B05DDCF65D3B53 /* IdentifyPersonDisplayCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdentifyPersonDisplayCard.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000011 /* JarvisMetaBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JarvisMetaBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA7A00000000000000000101 /* JarvisMetaBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisMetaBridgeApp.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000102 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -156,6 +162,8 @@
 				DA7A00000000000000000109 /* JarvisMetaBridge.entitlements */,
 				EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */,
 				3FFB53F9200DF384A603C8BA /* OneShotCaptureCoordinator.swift */,
+				B4637D9000B05DDCF65D3B53 /* IdentifyPersonDisplayCard.swift */,
+				3C91F17E7598D21EC6751279 /* GlassesDisplayPresenter.swift */,
 			);
 			path = JarvisMetaBridge;
 			sourceTree = "<group>";
@@ -175,6 +183,7 @@
 				DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */,
 				3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */,
 				AB9EA0EE333F858ADB85D6F1 /* OneShotCaptureCoordinatorTests.swift */,
+				8D8E74ED1273054B1F28A934 /* GlassesDisplayPresenterTests.swift */,
 			);
 			path = JarvisMetaBridgeTests;
 			sourceTree = "<group>";
@@ -309,6 +318,8 @@
 				DA7A00000000000000000207 /* SettingsView.swift in Sources */,
 				2B6ADB22BF7DF67B1432B78E /* IdentificationAPIClient.swift in Sources */,
 				12F6E38CFD90CBF54C7E76B8 /* OneShotCaptureCoordinator.swift in Sources */,
+				C9629111286F9E1FE7536631 /* IdentifyPersonDisplayCard.swift in Sources */,
+				07681F0365BE239EBC568922 /* GlassesDisplayPresenter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,6 +331,7 @@
 				DA7A00000000000000000322 /* DeviceStreamSessionManagerTests.swift in Sources */,
 				73DB2828A1878717E33F0A94 /* IdentificationAPIClientTests.swift in Sources */,
 				16E2DA26A8E121F61C1FD666 /* OneShotCaptureCoordinatorTests.swift in Sources */,
+				ADD9E244D87C7B66A7CC1DF2 /* GlassesDisplayPresenterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
