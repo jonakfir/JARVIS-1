@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2B6ADB22BF7DF67B1432B78E /* IdentificationAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */; };
+		73DB2828A1878717E33F0A94 /* IdentificationAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */; };
+		DA7A0000000000000000001E /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001C /* MWDATCore */; };
+		DA7A0000000000000000001F /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001D /* MWDATCamera */; };
 		DA7A00000000000000000201 /* JarvisMetaBridgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000101 /* JarvisMetaBridgeApp.swift */; };
 		DA7A00000000000000000202 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000102 /* AppConfig.swift */; };
 		DA7A00000000000000000203 /* WearablesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000103 /* WearablesViewModel.swift */; };
@@ -25,16 +29,25 @@
 		DA7A00000000000000000213 /* VoiceGuideWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000113 /* VoiceGuideWidgetView.swift */; };
 		DA7A00000000000000000214 /* VisionAskService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000114 /* VisionAskService.swift */; };
 		DA7A00000000000000000215 /* VoiceInputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000115 /* VoiceInputService.swift */; };
-		DA7A0000000000000000001E /* MWDATCore in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001C /* MWDATCore */; };
-		DA7A0000000000000000001F /* MWDATCamera in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A0000000000000000001D /* MWDATCamera */; };
+		DA7A00000000000000000301 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000302 /* SmokeTests.swift */; };
 		DA7A00000000000000000310 /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A00000000000000000311 /* MWDATDisplay */; };
 		DA7A00000000000000000312 /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A00000000000000000313 /* MWDATMockDevice */; };
-		DA7A00000000000000000301 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000302 /* SmokeTests.swift */; };
 		DA7A00000000000000000320 /* DeviceStreamSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000321 /* DeviceStreamSessionManager.swift */; };
 		DA7A00000000000000000322 /* DeviceStreamSessionManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		DA7A0000000000000000030B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DA7A00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DA7A00000000000000000010;
+			remoteInfo = JarvisMetaBridge;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdentificationAPIClientTests.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000011 /* JarvisMetaBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JarvisMetaBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA7A00000000000000000101 /* JarvisMetaBridgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisMetaBridgeApp.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000102 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -43,6 +56,9 @@
 		DA7A00000000000000000105 /* JarvisFrameUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisFrameUploader.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000106 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000107 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		DA7A00000000000000000108 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DA7A00000000000000000109 /* JarvisMetaBridge.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JarvisMetaBridge.entitlements; sourceTree = "<group>"; };
+		DA7A0000000000000000010A /* JarvisMetaBridge.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = JarvisMetaBridge.xcconfig; sourceTree = "<group>"; };
 		DA7A0000000000000000010B /* IdentifyPersonWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentifyPersonWidgetView.swift; sourceTree = "<group>"; };
 		DA7A0000000000000000010C /* SceneDescribeWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDescribeWidgetView.swift; sourceTree = "<group>"; };
 		DA7A0000000000000000010D /* SceneDescribeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDescribeService.swift; sourceTree = "<group>"; };
@@ -54,13 +70,11 @@
 		DA7A00000000000000000113 /* VoiceGuideWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGuideWidgetView.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000114 /* VisionAskService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionAskService.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000115 /* VoiceInputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputService.swift; sourceTree = "<group>"; };
-		DA7A00000000000000000108 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		DA7A00000000000000000109 /* JarvisMetaBridge.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JarvisMetaBridge.entitlements; sourceTree = "<group>"; };
-		DA7A0000000000000000010A /* JarvisMetaBridge.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = JarvisMetaBridge.xcconfig; sourceTree = "<group>"; };
 		DA7A00000000000000000302 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000303 /* JarvisMetaBridgeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JarvisMetaBridgeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DA7A00000000000000000321 /* DeviceStreamSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStreamSessionManager.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStreamSessionManagerTests.swift; sourceTree = "<group>"; };
+		EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IdentificationAPIClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -136,6 +150,7 @@
 				DA7A00000000000000000107 /* SettingsView.swift */,
 				DA7A00000000000000000108 /* Info.plist */,
 				DA7A00000000000000000109 /* JarvisMetaBridge.entitlements */,
+				EF251C13935C8501EA8AD1C0 /* IdentificationAPIClient.swift */,
 			);
 			path = JarvisMetaBridge;
 			sourceTree = "<group>";
@@ -153,6 +168,7 @@
 			children = (
 				DA7A00000000000000000302 /* SmokeTests.swift */,
 				DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */,
+				3DAE08B165E0F246B876BC5C /* IdentificationAPIClientTests.swift */,
 			);
 			path = JarvisMetaBridgeTests;
 			sourceTree = "<group>";
@@ -285,6 +301,7 @@
 				DA7A00000000000000000214 /* VisionAskService.swift in Sources */,
 				DA7A00000000000000000215 /* VoiceInputService.swift in Sources */,
 				DA7A00000000000000000207 /* SettingsView.swift in Sources */,
+				2B6ADB22BF7DF67B1432B78E /* IdentificationAPIClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,20 +311,11 @@
 			files = (
 				DA7A00000000000000000301 /* SmokeTests.swift in Sources */,
 				DA7A00000000000000000322 /* DeviceStreamSessionManagerTests.swift in Sources */,
+				73DB2828A1878717E33F0A94 /* IdentificationAPIClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		DA7A0000000000000000030B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = DA7A00000000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DA7A00000000000000000010;
-			remoteInfo = JarvisMetaBridge;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
 		DA7A0000000000000000030A /* PBXTargetDependency */ = {
