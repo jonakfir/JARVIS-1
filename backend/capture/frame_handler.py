@@ -11,6 +11,7 @@ from PIL import Image
 from identification.detector import MediaPipeFaceDetector
 from identification.embedder import ArcFaceEmbedder
 from identification.human_detector import HumanDetector
+from identification.linkedin_enricher import LinkedInEnricher
 from identification.models import FaceDetectionRequest, FaceSearchRequest
 from identification.search_manager import FaceSearchManager
 
@@ -68,11 +69,13 @@ class FrameHandler:
         face_detector: MediaPipeFaceDetector | None = None,
         embedder: ArcFaceEmbedder | None = None,
         face_searcher: FaceSearchManager | None = None,
+        linkedin_enricher: LinkedInEnricher | None = None,
     ):
         self.detector = HumanDetector()
         self._face_detector = face_detector
         self._embedder = embedder
         self._face_searcher = face_searcher
+        self._linkedin_enricher = linkedin_enricher or LinkedInEnricher()
         self._seen_tracks: set[int] = set()
         self._identifications: dict[int, Identification] = {}
         self._identifications_by_request_id: dict[str, Identification] = {}
@@ -270,7 +273,7 @@ class FrameHandler:
             if not search_result.success or not search_result.matches:
                 logger.info("No face search matches for track_id={}", tid)
                 ident.status = "failed"
-                ident.error = "No matches found"
+                ident.error = search_result.error or "No matches found"
                 return
 
             # Step 4: Name resolution (frequency analysis across matches)
@@ -284,6 +287,31 @@ class FrameHandler:
             logger.info("Face identified: track_id={} → name={}", tid, name)
             ident.status = "identified"
             ident.name = name
+
+            # Enrichment is allowed only from a direct LinkedIn profile URL
+            # contained in this exact face-search response. The resolved name
+            # is never used as a LinkedIn search query.
+            profile_urls = self._face_searcher.profile_urls_from_results(
+                search_result,
+                person_name=name,
+            )
+            linkedin_url = next(
+                (
+                    url
+                    for url in profile_urls
+                    if self._linkedin_enricher.is_allowed_profile_url(url)
+                ),
+                None,
+            )
+            if linkedin_url is not None:
+                ident.linkedin_url = linkedin_url
+                try:
+                    role = await self._linkedin_enricher.enrich(linkedin_url)
+                    if role is not None:
+                        ident.job_title = role.job_title
+                        ident.company = role.company
+                except Exception as exc:
+                    logger.info("LinkedIn enrichment failed without hiding identity: {}", exc)
 
         except Exception as exc:
             logger.error("Face identification failed for track_id={}: {}", tid, exc)

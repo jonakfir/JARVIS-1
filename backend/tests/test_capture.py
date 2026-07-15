@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 import main
 from capture.frame_handler import FrameHandler
 from capture.frame_handler import Identification as TrackedIdentification
-from identification.models import FaceDetectionResult, FaceSearchResult
+from identification.linkedin_enricher import LinkedInRole
+from identification.models import FaceDetectionResult, FaceSearchMatch, FaceSearchResult
 from main import app
 from schemas import FrameProcessedResponse, Identification, IdentificationStatusResponse
 
@@ -228,7 +229,7 @@ async def test_missing_pipeline_releases_identification_lock(
 
 
 @pytest.mark.asyncio
-async def test_search_failure_releases_identification_lock(
+async def test_pimeyes_failure_is_visible_and_releases_identification_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     face_detector = MagicMock()
@@ -237,7 +238,10 @@ async def test_search_failure_releases_identification_lock(
     )
     searcher = MagicMock()
     searcher.search_face = AsyncMock(
-        return_value=FaceSearchResult(success=False, error="expired"),
+        return_value=FaceSearchResult(
+            success=False,
+            error="PimEyes credentials missing or expired",
+        ),
     )
     handler = FrameHandler(
         face_detector=face_detector,
@@ -257,8 +261,137 @@ async def test_search_failure_releases_identification_lock(
     await handler.process_frame(VALID_FRAME_B64, 1, "meta_glasses_ios", target=True)
     await wait_for_identification(handler, 1)
 
-    assert handler._identifications[1].error == "No matches found"
+    assert handler._identifications[1].error == "PimEyes credentials missing or expired"
     assert handler._search_in_progress is False
+
+
+@pytest.mark.asyncio
+async def test_name_is_observable_before_direct_linkedin_enrichment_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    enrichment_started = asyncio.Event()
+    release_enrichment = asyncio.Event()
+    face_detector = MagicMock()
+    face_detector.detect_faces = AsyncMock(
+        return_value=FaceDetectionResult(success=False, faces=[]),
+    )
+    searcher = MagicMock()
+    searcher.search_face = AsyncMock(
+        return_value=FaceSearchResult(
+            matches=[
+                FaceSearchMatch(
+                    url="https://www.linkedin.com/in/jane-doe",
+                    similarity=0.95,
+                    source="pimeyes",
+                    person_name="Jane Doe",
+                ),
+            ],
+        ),
+    )
+    searcher.best_name_from_results.return_value = "Jane Doe"
+    searcher.profile_urls_from_results.return_value = [
+        "https://www.linkedin.com/in/jane-doe",
+    ]
+    enricher = MagicMock()
+
+    async def blocked_enrichment(_: str) -> LinkedInRole:
+        enrichment_started.set()
+        await release_enrichment.wait()
+        return LinkedInRole(job_title="Engineer", company="Acme")
+
+    enricher.enrich = AsyncMock(side_effect=blocked_enrichment)
+    enricher.is_allowed_profile_url.return_value = True
+    handler = FrameHandler(
+        face_detector=face_detector,
+        embedder=MagicMock(),
+        face_searcher=searcher,
+        linkedin_enricher=enricher,
+    )
+    detections = [
+        {"bbox": [0.0, 0.0, 80.0, 100.0], "confidence": 0.90, "track_id": 4},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    result = await handler.process_frame(VALID_FRAME_B64, 1, target=True)
+    request_id = result["request_id"]
+    await asyncio.wait_for(enrichment_started.wait(), timeout=1)
+
+    identification = handler.get_identification(request_id)
+    assert identification is not None
+    assert identification.status == "identified"
+    assert identification.name == "Jane Doe"
+    assert identification.linkedin_url == "https://www.linkedin.com/in/jane-doe"
+    assert identification.job_title is None
+
+    release_enrichment.set()
+    for _ in range(20):
+        if identification.job_title is not None:
+            break
+        await asyncio.sleep(0)
+
+    assert identification.job_title == "Engineer"
+    assert identification.company == "Acme"
+    searcher.profile_urls_from_results.assert_called_once_with(
+        searcher.search_face.return_value,
+        person_name="Jane Doe",
+    )
+    enricher.enrich.assert_awaited_once_with("https://www.linkedin.com/in/jane-doe")
+
+
+@pytest.mark.asyncio
+async def test_identification_never_enriches_without_direct_linkedin_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    face_detector = MagicMock()
+    face_detector.detect_faces = AsyncMock(
+        return_value=FaceDetectionResult(success=False, faces=[]),
+    )
+    searcher = MagicMock()
+    searcher.search_face = AsyncMock(
+        return_value=FaceSearchResult(
+            matches=[
+                FaceSearchMatch(
+                    url="https://example.com/jane-doe",
+                    similarity=0.95,
+                    source="pimeyes",
+                    person_name="Jane Doe",
+                ),
+            ],
+        ),
+    )
+    searcher.best_name_from_results.return_value = "Jane Doe"
+    searcher.profile_urls_from_results.return_value = []
+    enricher = MagicMock()
+    enricher.enrich = AsyncMock()
+    handler = FrameHandler(
+        face_detector=face_detector,
+        embedder=MagicMock(),
+        face_searcher=searcher,
+        linkedin_enricher=enricher,
+    )
+    detections = [
+        {"bbox": [0.0, 0.0, 80.0, 100.0], "confidence": 0.90, "track_id": 4},
+    ]
+    monkeypatch.setattr(
+        handler.detector,
+        "detect_from_base64",
+        lambda _: {"detections": detections},
+    )
+    monkeypatch.setattr(handler.detector, "crop_persons", lambda *_: [VALID_FRAME_B64])
+
+    result = await handler.process_frame(VALID_FRAME_B64, 1, target=True)
+    await wait_for_identification(handler, 4)
+
+    identification = handler.get_identification(result["request_id"])
+    assert identification is not None
+    assert identification.name == "Jane Doe"
+    assert identification.linkedin_url is None
+    enricher.enrich.assert_not_awaited()
 
 
 def test_capture_upload_returns_processed() -> None:
