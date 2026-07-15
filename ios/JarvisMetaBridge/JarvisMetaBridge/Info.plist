@@ -38,6 +38,8 @@
 	<!-- Values must match the project registered in Wearables Developer Center. -->
 	<key>MWDAT</key>
 	<dict>
+		<key>DAMEnabled</key>
+		<true/>
 		<key>AppLinkURLScheme</key>
 		<string>https://jarvis-meta-bridge-links.vercel.app/meta-wearables/callback</string>
 		<key>ClientToken</key>
