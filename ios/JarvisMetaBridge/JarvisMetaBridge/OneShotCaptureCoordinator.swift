@@ -48,22 +48,33 @@ final class OneShotCaptureCoordinator {
     let token = UUID()
     activeToken = token
     let task = Task { @MainActor [factory, timeout] in
-      let session = try factory.makeDisplayCapableSession()
-      var stream: (any OneShotPhotoStream)?
-      defer {
-        stream?.stop()
-        session.stop()
+      try await withThrowingTaskGroup(of: Data.self) { group in
+        group.addTask { @MainActor in
+          let session = try factory.makeDisplayCapableSession()
+          var stream: (any OneShotPhotoStream)?
+          defer {
+            stream?.stop()
+            session.stop()
+          }
+          try await session.start()
+          try Task.checkCancellation()
+          let madeStream = try session.makeStream()
+          stream = madeStream
+          let states = madeStream.states
+          try madeStream.start()
+          try await Self.waitForStreaming(states)
+          try Task.checkCancellation()
+          guard madeStream.captureJPEG() else { throw OneShotCaptureError.photoRejected }
+          return try await madeStream.nextPhoto()
+        }
+        group.addTask {
+          try await Task.sleep(for: timeout)
+          throw OneShotCaptureError.timedOut
+        }
+        defer { group.cancelAll() }
+        guard let result = try await group.next() else { throw OneShotCaptureError.streamEnded }
+        return result
       }
-      try await session.start()
-      try Task.checkCancellation()
-      let madeStream = try session.makeStream()
-      stream = madeStream
-      let states = madeStream.states
-      try madeStream.start()
-      try await Self.waitForStreaming(states, timeout: timeout)
-      try Task.checkCancellation()
-      guard madeStream.captureJPEG() else { throw OneShotCaptureError.photoRejected }
-      return try await Self.waitForPhoto(madeStream, timeout: timeout)
     }
     activeTask = task
     defer {
@@ -81,29 +92,12 @@ final class OneShotCaptureCoordinator {
     activeToken = nil
   }
 
-  private static func waitForStreaming(
-    _ states: AsyncStream<OneShotStreamState>, timeout: Duration
-  ) async throws {
-    try await withThrowingTaskGroup(of: Void.self) { group in
-      group.addTask {
-        for await state in states where state == .streaming { return }
-        throw OneShotCaptureError.streamEnded
-      }
-      group.addTask { try await Task.sleep(for: timeout); throw OneShotCaptureError.timedOut }
-      defer { group.cancelAll() }
-      _ = try await group.next()
-    }
+  private static func waitForStreaming(_ states: AsyncStream<OneShotStreamState>) async throws {
+    for await state in states where state == .streaming { return }
+    if Task.isCancelled { throw CancellationError() }
+    throw OneShotCaptureError.streamEnded
   }
 
-  private static func waitForPhoto(_ stream: any OneShotPhotoStream, timeout: Duration) async throws -> Data {
-    try await withThrowingTaskGroup(of: Data.self) { group in
-      group.addTask { try await stream.nextPhoto() }
-      group.addTask { try await Task.sleep(for: timeout); throw OneShotCaptureError.timedOut }
-      defer { group.cancelAll() }
-      guard let result = try await group.next() else { throw OneShotCaptureError.streamEnded }
-      return result
-    }
-  }
 }
 
 @MainActor

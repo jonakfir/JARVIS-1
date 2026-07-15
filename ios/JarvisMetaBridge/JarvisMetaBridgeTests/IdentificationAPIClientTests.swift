@@ -71,6 +71,32 @@ final class IdentificationAPIClientTests: XCTestCase {
     }
   }
 
+  func testIdentifyingAndFailedStatusesDecode() async throws {
+    let session = makeSession()
+    var status = "identifying"
+    URLProtocolStub.handler = { request in
+      let body = #"{"request_id":"r","track_id":-1,"status":"\#(status)","name":null,"linkedin_url":null,"job_title":null,"company":null,"error":"unavailable"}"#.data(using: .utf8)!
+      return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
+    }
+    let client = IdentificationAPIClient(baseURL: URL(string: "http://jarvis.test:8000")!, session: session)
+
+    let identifying = try await client.status(requestID: "r")
+    XCTAssertEqual(identifying.status, .identifying)
+    status = "failed"
+    let failed = try await client.status(requestID: "r")
+    XCTAssertEqual(failed.status, .failed)
+  }
+
+  func testTimeoutIsTyped() async {
+    let session = makeSession()
+    URLProtocolStub.handler = { _ in throw URLError(.timedOut) }
+    let client = IdentificationAPIClient(baseURL: URL(string: "http://jarvis.test:8000")!, session: session)
+
+    await XCTAssertThrowsErrorAsync { _ = try await client.status(requestID: "r") } verify: {
+      XCTAssertEqual($0 as? IdentificationAPIError, .timedOut)
+    }
+  }
+
   private func makeSession() -> URLSession {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [URLProtocolStub.self]
