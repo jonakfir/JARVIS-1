@@ -42,18 +42,66 @@ final class TaskDisplayClearScheduler: DisplayClearScheduling {
 }
 
 @MainActor
-final class GlassesDisplayPresenter {
+final class SerializedIdentityDisplayLane {
   private let display: any IdentityDisplayConnection
+  private var currentGeneration = 0
+  private var tail: Task<Void, Never>?
+
+  init(display: any IdentityDisplayConnection) { self.display = display }
+
+  func advance(to generation: Int) { currentGeneration = generation }
+
+  func send(_ card: IdentityDisplayCard, generation: Int) async throws {
+    try await enqueue { [weak self] in
+      guard let self, self.currentGeneration == generation else { return }
+      try await self.display.send(card)
+    }
+  }
+
+  func clear(generation: Int) async throws {
+    try await enqueue { [weak self] in
+      guard let self, self.currentGeneration == generation else { return }
+      try await self.display.clear()
+    }
+  }
+
+  func stop(generation: Int) {
+    currentGeneration = generation
+    let previous = tail
+    tail = Task { @MainActor [display] in
+      await previous?.value
+      display.stop()
+    }
+  }
+
+  private func enqueue(_ mutation: @escaping @MainActor () async throws -> Void) async throws {
+    let previous = tail
+    let operation = Task { @MainActor in
+      await previous?.value
+      try Task.checkCancellation()
+      try await mutation()
+    }
+    tail = Task { _ = try? await operation.value }
+    try await withTaskCancellationHandler {
+      try await operation.value
+    } onCancel: {
+      operation.cancel()
+    }
+  }
+}
+
+@MainActor
+final class GlassesDisplayPresenter {
+  private let lane: SerializedIdentityDisplayLane
   private let scheduler: any DisplayClearScheduling
   private var clearToken: DisplayClearToken?
   private var generation = 0
-  private var currentCard: IdentityDisplayCard?
 
   init(
     display: any IdentityDisplayConnection,
     scheduler: (any DisplayClearScheduling)? = nil
   ) {
-    self.display = display
+    self.lane = SerializedIdentityDisplayLane(display: display)
     self.scheduler = scheduler ?? TaskDisplayClearScheduler()
   }
 
@@ -66,46 +114,35 @@ final class GlassesDisplayPresenter {
 
   func clear() async throws {
     generation += 1
+    let clearGeneration = generation
+    lane.advance(to: clearGeneration)
     clearToken?.cancel()
     clearToken = nil
-    try await display.clear()
-    currentCard = nil
+    try await lane.clear(generation: clearGeneration)
   }
 
   func cancel() {
     generation += 1
+    lane.advance(to: generation)
     clearToken?.cancel()
     clearToken = nil
-    currentCard = nil
-    display.stop()
+    lane.stop(generation: generation)
   }
 
   private func show(_ card: IdentityDisplayCard, clears: Bool) async throws {
     generation += 1
     let cardGeneration = generation
+    lane.advance(to: cardGeneration)
     clearToken?.cancel()
     clearToken = nil
-    try await display.send(card)
-    currentCard = card
+    try await lane.send(card, generation: cardGeneration)
     guard clears else { return }
     clearToken = scheduler.schedule(after: .seconds(3)) { [weak self] in
       guard let self, self.generation == cardGeneration else { return }
       Task { @MainActor in
-        await self.clearScheduledCard(generation: cardGeneration)
+        try? await self.lane.clear(generation: cardGeneration)
+        if self.generation == cardGeneration { self.clearToken = nil }
       }
-    }
-  }
-
-  private func clearScheduledCard(generation cardGeneration: Int) async {
-    guard generation == cardGeneration else { return }
-    try? await display.clear()
-    if generation == cardGeneration {
-      currentCard = nil
-      clearToken = nil
-    } else if let currentCard {
-      // The SDK clear was already in flight when a newer card arrived. Restore
-      // the latest generation after that stale clear completes.
-      try? await display.send(currentCard)
     }
   }
 }

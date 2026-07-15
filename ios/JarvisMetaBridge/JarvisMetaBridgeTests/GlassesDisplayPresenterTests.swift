@@ -61,20 +61,45 @@ final class GlassesDisplayPresenterTests: XCTestCase {
     XCTAssertEqual(scheduler.entries.last?.delay, .seconds(3))
   }
 
-  func testClearAlreadyInFlightCannotEraseNewerEnrichedCard() async throws {
+  func testSerializedLaneDoesNotResurrectExpiredCardAfterSuspendedStaleSend() async throws {
     let display = FakeIdentityDisplay()
-    let scheduler = FakeClearScheduler()
-    let presenter = GlassesDisplayPresenter(display: display, scheduler: scheduler)
-    try await presenter.showName("Jane Doe")
-    display.suspendNextClear = true
-    scheduler.entries.last?.action()
-    await waitUntil { display.clearStarted }
+    let lane = SerializedIdentityDisplayLane(display: display)
+    lane.advance(to: 1)
+    display.suspendNextSend = true
+    let stale = Task { try await lane.send(.name("Old"), generation: 1) }
+    await waitUntil { display.sendStarted }
 
-    try await presenter.showEnriched(name: "Jane Doe", role: "Engineer", company: "Acme")
-    XCTAssertEqual(display.visibleCard, .enriched(name: "Jane Doe", role: "Engineer", company: "Acme"))
-    display.resumeClear()
-    await waitUntil { display.clearCount == 1 && display.visibleCard != nil }
+    lane.advance(to: 2)
+    let current = Task {
+      try await lane.send(
+        .enriched(name: "Jane Doe", role: "Engineer", company: "Acme"), generation: 2)
+    }
+    let clear = Task { try await lane.clear(generation: 2) }
+    display.resumeSend()
 
+    try await stale.value
+    try await current.value
+    try await clear.value
+    XCTAssertNil(display.visibleCard)
+  }
+
+  func testSerializedLaneSuspendedStaleOperationCannotOverwriteNewerCard() async throws {
+    let display = FakeIdentityDisplay()
+    let lane = SerializedIdentityDisplayLane(display: display)
+    lane.advance(to: 1)
+    display.suspendNextSend = true
+    let stale = Task { try await lane.send(.name("Old"), generation: 1) }
+    await waitUntil { display.sendStarted }
+
+    lane.advance(to: 2)
+    let current = Task {
+      try await lane.send(
+        .enriched(name: "Jane Doe", role: "Engineer", company: "Acme"), generation: 2)
+    }
+    display.resumeSend()
+
+    try await stale.value
+    try await current.value
     XCTAssertEqual(display.visibleCard, .enriched(name: "Jane Doe", role: "Engineer", company: "Acme"))
   }
 
@@ -152,9 +177,20 @@ final class GlassesDisplayPresenterTests: XCTestCase {
   private(set) var clearCount = 0
   private(set) var visibleCard: IdentityDisplayCard?
   private(set) var clearStarted = false
+  private(set) var sendStarted = false
   var suspendNextClear = false
+  var suspendNextSend = false
   private var clearContinuation: CheckedContinuation<Void, Never>?
-  func send(_ card: IdentityDisplayCard) async throws { cards.append(card); visibleCard = card }
+  private var sendContinuation: CheckedContinuation<Void, Never>?
+  func send(_ card: IdentityDisplayCard) async throws {
+    sendStarted = true
+    if suspendNextSend {
+      suspendNextSend = false
+      await withCheckedContinuation { sendContinuation = $0 }
+    }
+    cards.append(card)
+    visibleCard = card
+  }
   func clear() async throws {
     clearStarted = true
     if suspendNextClear {
@@ -165,6 +201,7 @@ final class GlassesDisplayPresenterTests: XCTestCase {
     visibleCard = nil
   }
   func resumeClear() { clearContinuation?.resume(); clearContinuation = nil }
+  func resumeSend() { sendContinuation?.resume(); sendContinuation = nil }
   func stop() {}
 }
 
