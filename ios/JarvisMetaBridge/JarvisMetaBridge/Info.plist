@@ -66,6 +66,10 @@
 	<!-- Prompt shown for discovering the JARVIS backend on the local network. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Needed to send camera frames to the JARVIS backend running on your Mac.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_bonjour._tcp</string>
+	</array>
 	<!-- Microphone (Voice Guide) — captures your spoken question via the glasses/phone mic. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Needed for the Voice Guide widget to hear your spoken questions.</string>
@@ -82,8 +86,10 @@
 	<!-- Required so the glasses connection survives backgrounding. -->
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>bluetooth-central</string>
 		<string>bluetooth-peripheral</string>
 		<string>external-accessory</string>
+		<string>processing</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
