@@ -96,7 +96,7 @@ final class OneShotIdentificationViewModel: ObservableObject {
       state = .capturing
       let jpeg = try await captureJPEG()
       try validate(attemptID)
-      try await showCard(.identifying)
+      try await showCardBestEffort(.identifying)
       try validate(attemptID)
       let ticket = try await submit(jpeg)
       try validate(attemptID)
@@ -111,7 +111,7 @@ final class OneShotIdentificationViewModel: ObservableObject {
         switch result.status {
         case .failed:
           diagnosticMessage = result.error ?? "Identification failed"
-          try await showCard(.notIdentified)
+          try await showCardBestEffort(.notIdentified)
           try validate(attemptID)
           state = .notIdentified
           return
@@ -121,12 +121,12 @@ final class OneShotIdentificationViewModel: ObservableObject {
           guard let name = useful(result.name) else { break }
           if displayedName == nil {
             displayedName = name
-            try await showCard(.name(name))
+            try await showCardBestEffort(.name(name))
             try validate(attemptID)
             state = .nameDisplayed(name)
           }
           if let role = useful(result.jobTitle), let company = useful(result.company) {
-            try await showCard(.enriched(name: name, role: role, company: company))
+            try await showCardBestEffort(.enriched(name: name, role: role, company: company))
             try validate(attemptID)
             state = .enrichedCardDisplayed(name: name, role: role, company: company)
             return
@@ -141,7 +141,7 @@ final class OneShotIdentificationViewModel: ObservableObject {
       if let displayedName { state = .nameDisplayed(displayedName) }
       else {
         diagnosticMessage = "Identification timed out"
-        try await showCard(.notIdentified)
+        try await showCardBestEffort(.notIdentified)
         try validate(attemptID)
         state = .notIdentified
       }
@@ -151,13 +151,25 @@ final class OneShotIdentificationViewModel: ObservableObject {
       guard currentAttemptID == attemptID, !Task.isCancelled else { return }
       diagnosticMessage = error.localizedDescription
       do {
-        try await showCard(.notIdentified)
+        try await showCardBestEffort(.notIdentified)
         try validate(attemptID)
         state = .notIdentified
       } catch {
         guard currentAttemptID == attemptID, !Task.isCancelled else { return }
         state = .failed(diagnosticMessage ?? "Identification failed")
       }
+    }
+  }
+
+  /// Display delivery must not prevent a captured, consented photo from being
+  /// submitted. Meta may temporarily reject Display while camera access works.
+  private func showCardBestEffort(_ card: IdentityDisplayCard) async throws {
+    do {
+      try await showCard(card)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      diagnosticMessage = "Glasses display unavailable: \(error.localizedDescription)"
     }
   }
 

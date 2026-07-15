@@ -98,6 +98,17 @@ final class WearablesViewModel: ObservableObject {
     }
   }
 
+  /// Open Meta AI directly to the glasses-side DAT app update flow.
+  func updateGlassesApp() {
+    Task { @MainActor in
+      do {
+        try await wearables.openDATGlassesAppUpdate()
+      } catch {
+        show(error.localizedDescription)
+      }
+    }
+  }
+
   private func show(_ message: String) {
     errorMessage = message
     showError = true

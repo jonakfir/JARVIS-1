@@ -104,6 +104,20 @@ final class StreamSessionViewModel: ObservableObject {
     }
   }
 
+  /// Request camera access through Meta AI without starting a video stream.
+  func requestCameraPermission() async {
+    do {
+      let status = try await wearables.requestPermission(Permission.camera)
+      cameraPermissionGranted = (status == .granted)
+      if status != .granted {
+        show("Camera permission denied. Grant it in the Meta AI app.")
+      }
+    } catch {
+      cameraPermissionGranted = false
+      show("Unable to request camera permission: \(error.localizedDescription)")
+    }
+  }
+
   // MARK: - Streaming lifecycle
 
   /// Check/request camera permission, then start the glasses stream.

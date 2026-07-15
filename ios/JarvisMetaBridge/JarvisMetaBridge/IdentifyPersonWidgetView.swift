@@ -48,11 +48,25 @@ struct IdentifyPersonWidgetView: View {
 
   private var controls: some View {
     VStack(spacing: 12) {
+      if !streamViewModel.cameraPermissionGranted {
+        Button {
+          Task { await streamViewModel.requestCameraPermission() }
+        } label: {
+          Label("Grant camera access", systemImage: "camera.fill")
+            .frame(maxWidth: .infinity)
+        }.buttonStyle(.borderedProminent)
+      }
+
       if !wearablesViewModel.isRegistered {
         Button { wearablesViewModel.connectGlasses() } label: {
           Label("Connect glasses (Meta AI)", systemImage: "link").frame(maxWidth: .infinity)
         }.buttonStyle(.borderedProminent)
       } else {
+        Button { wearablesViewModel.updateGlassesApp() } label: {
+          Label("Update glasses app", systemImage: "arrow.triangle.2.circlepath")
+            .frame(maxWidth: .infinity)
+        }.buttonStyle(.borderedProminent)
+
         Button(role: .destructive) {
           identificationViewModel.disconnectGlasses { wearablesViewModel.disconnectGlasses() }
         } label: {
