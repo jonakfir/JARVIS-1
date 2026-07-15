@@ -48,8 +48,13 @@ extension DisplayDeviceSelectorReadiness {
 @MainActor
 final class DATAutoDeviceSelectorReadiness: DisplayDeviceSelectorReadiness {
   let selector: AutoDeviceSelector
-  init(wearables: WearablesInterface) {
-    selector = AutoDeviceSelector(wearables: wearables) { $0.supportsDisplay() }
+  init(wearables: WearablesInterface, requiresDisplay: Bool = true) {
+    if requiresDisplay {
+      selector = AutoDeviceSelector(wearables: wearables) { $0.supportsDisplay() }
+    } else {
+      // Meta's CameraAccess sample intentionally uses an unfiltered selector.
+      selector = AutoDeviceSelector(wearables: wearables)
+    }
   }
   var hasEligibleDevice: Bool { selector.activeDevice != nil }
   func availabilityStream() -> AsyncStream<Bool> {
@@ -161,7 +166,7 @@ final class DATOneShotCaptureSessionFactory: OneShotCaptureSessionFactory {
   private let readiness: DATAutoDeviceSelectorReadiness
   init(wearables: WearablesInterface) {
     self.wearables = wearables
-    self.readiness = DATAutoDeviceSelectorReadiness(wearables: wearables)
+    self.readiness = DATAutoDeviceSelectorReadiness(wearables: wearables, requiresDisplay: false)
   }
   func makeDisplayCapableSession() async throws -> any OneShotCaptureSession {
     try await readiness.waitForEligibleDevice(timeout: .seconds(10))
