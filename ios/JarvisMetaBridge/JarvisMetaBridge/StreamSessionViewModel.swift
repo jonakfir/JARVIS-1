@@ -67,15 +67,19 @@ final class StreamSessionViewModel: ObservableObject {
     }
 
     let callbacks = CameraStreamCallbacks(
-      onState: { [weak self] state in self?.updateStatusFromState(state) },
-      onFrame: { [weak self] image in self?.handleVideoFrame(image) },
-      onPhoto: { [weak self] image in self?.handlePhoto(image) },
-      onError: { [weak self] error in self?.handleStreamError(error) })
+      onState: { [weak self] token, state in self?.handleStreamState(state, token: token) },
+      onFrame: { [weak self] token, image in self?.handleVideoFrame(image, token: token) },
+      onPhoto: { [weak self] token, image in self?.handlePhoto(image, token: token) },
+      onError: { [weak self] token, error in self?.handleStreamError(error, token: token) })
     let factory = DATDeviceSessionFactory(
       wearables: wearables,
       selector: deviceSelector,
       callbacks: callbacks)
-    self.sessionManager = DeviceStreamSessionManager(factory: factory)
+    self.sessionManager = DeviceStreamSessionManager(
+      factory: factory,
+      onSessionTerminated: { [weak self] _, failure in
+        self?.handleSessionTerminated(failure)
+      })
   }
 
   isolated deinit {
@@ -133,7 +137,8 @@ final class StreamSessionViewModel: ObservableObject {
 
   // MARK: - Helpers
 
-  private func handleVideoFrame(_ image: UIImage) {
+  private func handleVideoFrame(_ image: UIImage, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
     currentVideoFrame = image
     if !hasReceivedFirstFrame { hasReceivedFirstFrame = true }
     if detectionUploadsEnabled {
@@ -141,12 +146,14 @@ final class StreamSessionViewModel: ObservableObject {
     }
   }
 
-  private func handlePhoto(_ image: UIImage) {
+  private func handlePhoto(_ image: UIImage, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
     capturedPhoto = image
     capturedPhotoVersion += 1
   }
 
-  private func handleStreamError(_ error: StreamError) {
+  private func handleStreamError(_ error: StreamError, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
     if streamingStatus == .stopped {
       if case .deviceNotConnected = error { return }
       if case .deviceNotFound = error { return }
@@ -154,13 +161,25 @@ final class StreamSessionViewModel: ObservableObject {
     show(formatStreamingError(error))
   }
 
-  private func updateStatusFromState(_ state: StreamState) {
+  private func handleStreamState(_ state: StreamState, token: UUID) {
+    guard sessionManager.owns(token: token) else { return }
+    updateStatusFromState(state, token: token)
+  }
+
+  private func handleSessionTerminated(_ failure: ManagedSessionFailure?) {
+    currentVideoFrame = nil
+    hasReceivedFirstFrame = false
+    streamingStatus = .stopped
+    if let failure { show(failure.localizedDescription) }
+  }
+
+  private func updateStatusFromState(_ state: StreamState, token: UUID) {
     switch state {
     case .stopped:
       currentVideoFrame = nil
       hasReceivedFirstFrame = false
       streamingStatus = .stopped
-      sessionManager.stop()
+      sessionManager.stop(token: token)
     case .waitingForDevice, .starting, .stopping, .paused:
       streamingStatus = .waiting
     case .streaming:

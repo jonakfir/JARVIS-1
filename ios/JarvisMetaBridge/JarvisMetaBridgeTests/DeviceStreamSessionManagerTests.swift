@@ -118,6 +118,68 @@ final class DeviceStreamSessionManagerTests: XCTestCase {
     XCTAssertFalse(manager.hasSession)
     XCTAssertFalse(manager.hasStream)
   }
+
+  func testQueuedOldStreamStopCannotStopReplacement() async throws {
+    let old = FakeDeviceSession(initialState: .started, stream: FakeCameraStream())
+    let replacement = FakeDeviceSession(initialState: .started, stream: FakeCameraStream())
+    let manager = DeviceStreamSessionManager(
+      factory: FakeFactory(sessions: [old, replacement]), timeout: .seconds(1))
+    try await manager.start()
+    let oldToken = try XCTUnwrap(manager.activeToken)
+
+    try await manager.start()
+    let replacementToken = try XCTUnwrap(manager.activeToken)
+    manager.stop(token: oldToken)
+
+    XCTAssertNotEqual(oldToken, replacementToken)
+    XCTAssertEqual(manager.activeToken, replacementToken)
+    XCTAssertTrue(manager.hasSession)
+    XCTAssertTrue(manager.hasStream)
+  }
+
+  func testPostStartSessionStopClearsMatchingGeneration() async throws {
+    let session = FakeDeviceSession(initialState: .started, stream: FakeCameraStream())
+    let manager = DeviceStreamSessionManager(
+      factory: FakeFactory(sessions: [session]), timeout: .seconds(1))
+    try await manager.start()
+
+    session.emitState(.stopped)
+    await waitUntil { !manager.hasSession }
+
+    XCTAssertFalse(manager.hasSession)
+    XCTAssertFalse(manager.hasStream)
+  }
+
+  func testPostStartSessionErrorClearsMatchingGeneration() async throws {
+    let session = FakeDeviceSession(initialState: .started, stream: FakeCameraStream())
+    let manager = DeviceStreamSessionManager(
+      factory: FakeFactory(sessions: [session]), timeout: .seconds(1))
+    try await manager.start()
+
+    session.emitError(ManagedSessionFailure(message: "lost"))
+    await waitUntil { !manager.hasSession }
+
+    XCTAssertFalse(manager.hasSession)
+    XCTAssertFalse(manager.hasStream)
+  }
+
+  func testStaleSessionTerminalEventCannotStopReplacement() async throws {
+    let old = FakeDeviceSession(initialState: .started, stream: FakeCameraStream())
+    let replacement = FakeDeviceSession(initialState: .started, stream: FakeCameraStream())
+    let manager = DeviceStreamSessionManager(
+      factory: FakeFactory(sessions: [old, replacement]), timeout: .seconds(1))
+    try await manager.start()
+    try await manager.start()
+    let replacementToken = try XCTUnwrap(manager.activeToken)
+
+    old.emitState(.stopped)
+    old.emitError(ManagedSessionFailure(message: "stale"))
+    await Task.yield()
+
+    XCTAssertEqual(manager.activeToken, replacementToken)
+    XCTAssertTrue(manager.hasSession)
+    XCTAssertTrue(manager.hasStream)
+  }
 }
 
 private struct TestFailure: Error {}
@@ -129,7 +191,7 @@ private final class FakeFactory: DeviceSessionFactory {
 
   init(sessions: [FakeDeviceSession]) { self.sessions = sessions }
 
-  func makeSession() throws -> any DeviceSessionResource {
+  func makeSession(token: UUID) throws -> any DeviceSessionResource {
     defer { createCount += 1 }
     return sessions[createCount]
   }
@@ -140,6 +202,8 @@ private final class FakeDeviceSession: DeviceSessionResource {
   var state: ManagedDeviceSessionState
   let states: AsyncStream<ManagedDeviceSessionState>
   let errors: AsyncStream<ManagedSessionFailure>
+  private let stateContinuation: AsyncStream<ManagedDeviceSessionState>.Continuation
+  private let errorContinuation: AsyncStream<ManagedSessionFailure>.Continuation
   var startError: Error?
   var addStreamError: Error?
   var stream: FakeCameraStream?
@@ -157,12 +221,15 @@ private final class FakeDeviceSession: DeviceSessionResource {
     self.startError = startError
     self.addStreamError = addStreamError
     self.stream = stream
-    self.states = AsyncStream { _ in }
-    self.errors = AsyncStream { continuation in
-      if let asyncError {
-        continuation.yield(asyncError)
-        continuation.finish()
-      }
+    let stateChannel = AsyncStream<ManagedDeviceSessionState>.makeStream()
+    self.states = stateChannel.stream
+    self.stateContinuation = stateChannel.continuation
+    let errorChannel = AsyncStream<ManagedSessionFailure>.makeStream()
+    self.errors = errorChannel.stream
+    self.errorContinuation = errorChannel.continuation
+    if let asyncError {
+      self.errorContinuation.yield(asyncError)
+      self.errorContinuation.finish()
     }
   }
 
@@ -176,6 +243,9 @@ private final class FakeDeviceSession: DeviceSessionResource {
     if let addStreamError { throw addStreamError }
     return stream
   }
+
+  func emitState(_ state: ManagedDeviceSessionState) { stateContinuation.yield(state) }
+  func emitError(_ error: ManagedSessionFailure) { errorContinuation.yield(error) }
 }
 
 @MainActor
@@ -205,4 +275,12 @@ private func XCTAssertThrowsErrorAsync(
     try await expression()
     XCTFail("Expected error", file: file, line: line)
   } catch {}
+}
+
+@MainActor
+private func waitUntil(_ condition: @MainActor () -> Bool) async {
+  for _ in 0..<100 {
+    if condition() { return }
+    try? await Task.sleep(for: .milliseconds(1))
+  }
 }

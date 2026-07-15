@@ -22,7 +22,7 @@ enum DeviceStreamLifecycleError: Error {
 
 @MainActor
 protocol DeviceSessionFactory: AnyObject {
-  func makeSession() throws -> any DeviceSessionResource
+  func makeSession(token: UUID) throws -> any DeviceSessionResource
 }
 
 @MainActor
@@ -44,10 +44,10 @@ protocol CameraStreamResource: AnyObject {
 }
 
 struct CameraStreamCallbacks {
-  let onState: @MainActor (StreamState) -> Void
-  let onFrame: @MainActor (UIImage) -> Void
-  let onPhoto: @MainActor (UIImage) -> Void
-  let onError: @MainActor (StreamError) -> Void
+  let onState: @MainActor (UUID, StreamState) -> Void
+  let onFrame: @MainActor (UUID, UIImage) -> Void
+  let onPhoto: @MainActor (UUID, UIImage) -> Void
+  let onError: @MainActor (UUID, StreamError) -> Void
 }
 
 @MainActor
@@ -56,14 +56,21 @@ final class DeviceStreamSessionManager {
   private let timeout: Duration
   private var session: (any DeviceSessionResource)?
   private var stream: (any CameraStreamResource)?
-  private var attemptID: UUID?
+  private var sessionObserverTask: Task<Void, Never>?
+  private let onSessionTerminated: @MainActor (UUID, ManagedSessionFailure?) -> Void
 
   var hasSession: Bool { session != nil }
   var hasStream: Bool { stream != nil }
+  private(set) var activeToken: UUID?
 
-  init(factory: any DeviceSessionFactory, timeout: Duration = .seconds(15)) {
+  init(
+    factory: any DeviceSessionFactory,
+    timeout: Duration = .seconds(15),
+    onSessionTerminated: @escaping @MainActor (UUID, ManagedSessionFailure?) -> Void = { _, _ in }
+  ) {
     self.factory = factory
     self.timeout = timeout
+    self.onSessionTerminated = onSessionTerminated
   }
 
   isolated deinit {
@@ -72,13 +79,13 @@ final class DeviceStreamSessionManager {
 
   func start() async throws {
     stop()
-    let attemptID = UUID()
-    self.attemptID = attemptID
+    let token = UUID()
+    activeToken = token
     let newSession: any DeviceSessionResource
     do {
-      newSession = try factory.makeSession()
+      newSession = try factory.makeSession(token: token)
     } catch {
-      self.attemptID = nil
+      activeToken = nil
       throw error
     }
     session = newSession
@@ -92,31 +99,39 @@ final class DeviceStreamSessionManager {
         try await waitUntilStarted(states: states, errors: errors)
       }
       try Task.checkCancellation()
-      guard self.attemptID == attemptID else { throw CancellationError() }
+      guard activeToken == token else { throw CancellationError() }
 
       guard let createdStream = try newSession.makeStream() else {
         throw DeviceStreamLifecycleError.noStream
       }
       newStream = createdStream
       stream = createdStream
+      let ongoingStates = newSession.states
+      let ongoingErrors = newSession.errors
       try createdStream.start()
       try Task.checkCancellation()
+      guard activeToken == token else { throw CancellationError() }
+      observeSession(token: token, states: ongoingStates, errors: ongoingErrors)
     } catch {
       if let newStream {
         stopStreamOnce(newStream)
       }
       stopSessionOnce(newSession)
-      if self.attemptID == attemptID {
+      if activeToken == token {
         stream = nil
         session = nil
-        self.attemptID = nil
+        activeToken = nil
+        sessionObserverTask?.cancel()
+        sessionObserverTask = nil
       }
       throw error
     }
   }
 
   func stop() {
-    attemptID = nil
+    activeToken = nil
+    sessionObserverTask?.cancel()
+    sessionObserverTask = nil
     if let stream {
       stopStreamOnce(stream)
       self.stream = nil
@@ -125,6 +140,15 @@ final class DeviceStreamSessionManager {
       stopSessionOnce(session)
       self.session = nil
     }
+  }
+
+  func stop(token: UUID) {
+    guard activeToken == token else { return }
+    stop()
+  }
+
+  func owns(token: UUID) -> Bool {
+    activeToken == token
   }
 
   @discardableResult
@@ -139,6 +163,39 @@ final class DeviceStreamSessionManager {
 
   private func stopSessionOnce(_ session: any DeviceSessionResource) {
     session.stop()
+  }
+
+  private func observeSession(
+    token: UUID,
+    states: AsyncStream<ManagedDeviceSessionState>,
+    errors: AsyncStream<ManagedSessionFailure>
+  ) {
+    sessionObserverTask?.cancel()
+    sessionObserverTask = Task { @MainActor [weak self] in
+      let failure = await Self.waitForTerminalState(states: states, errors: errors)
+      guard let self, self.activeToken == token else { return }
+      self.stop(token: token)
+      self.onSessionTerminated(token, failure)
+    }
+  }
+
+  private static func waitForTerminalState(
+    states: AsyncStream<ManagedDeviceSessionState>,
+    errors: AsyncStream<ManagedSessionFailure>
+  ) async -> ManagedSessionFailure? {
+    await withTaskGroup(of: ManagedSessionFailure?.self) { group in
+      group.addTask {
+        for await state in states where state == .stopped { return nil }
+        return nil
+      }
+      group.addTask {
+        for await error in errors { return error }
+        return nil
+      }
+      let result = await group.next() ?? nil
+      group.cancelAll()
+      return result
+    }
   }
 
   private func waitUntilStarted(
@@ -186,10 +243,11 @@ final class DATDeviceSessionFactory: DeviceSessionFactory {
     self.callbacks = callbacks
   }
 
-  func makeSession() throws -> any DeviceSessionResource {
+  func makeSession(token: UUID) throws -> any DeviceSessionResource {
     DATDeviceSessionResource(
       session: try wearables.createSession(deviceSelector: selector),
-      callbacks: callbacks)
+      callbacks: callbacks,
+      token: token)
   }
 }
 
@@ -197,11 +255,13 @@ final class DATDeviceSessionFactory: DeviceSessionFactory {
 private final class DATDeviceSessionResource: DeviceSessionResource {
   private let session: DeviceSession
   private let callbacks: CameraStreamCallbacks
+  private let token: UUID
   private var isStopped = false
 
-  init(session: DeviceSession, callbacks: CameraStreamCallbacks) {
+  init(session: DeviceSession, callbacks: CameraStreamCallbacks, token: UUID) {
     self.session = session
     self.callbacks = callbacks
+    self.token = token
   }
 
   var state: ManagedDeviceSessionState { map(session.state) }
@@ -243,7 +303,7 @@ private final class DATDeviceSessionResource: DeviceSessionResource {
       resolution: .low,
       frameRate: 24)
     guard let stream = try session.addStream(config: config) else { return nil }
-    return DATCameraStreamResource(stream: stream, callbacks: callbacks)
+    return DATCameraStreamResource(stream: stream, callbacks: callbacks, token: token)
   }
 
   private func map(_ state: DeviceSessionState) -> ManagedDeviceSessionState {
@@ -257,15 +317,17 @@ private final class DATDeviceSessionResource: DeviceSessionResource {
 private final class DATCameraStreamResource: CameraStreamResource {
   private let stream: MWDATCamera.Stream
   private let callbacks: CameraStreamCallbacks
+  private let token: UUID
   private var stateToken: AnyListenerToken?
   private var frameToken: AnyListenerToken?
   private var photoToken: AnyListenerToken?
   private var errorToken: AnyListenerToken?
   private var isStopped = false
 
-  init(stream: MWDATCamera.Stream, callbacks: CameraStreamCallbacks) {
+  init(stream: MWDATCamera.Stream, callbacks: CameraStreamCallbacks, token: UUID) {
     self.stream = stream
     self.callbacks = callbacks
+    self.token = token
     installListeners()
   }
 
@@ -285,19 +347,20 @@ private final class DATCameraStreamResource: CameraStreamResource {
   }
 
   private func installListeners() {
-    stateToken = stream.statePublisher.listen { [callbacks] state in
-      Task { @MainActor in callbacks.onState(state) }
+    let generation = token
+    stateToken = stream.statePublisher.listen { [callbacks, generation] state in
+      Task { @MainActor in callbacks.onState(generation, state) }
     }
-    frameToken = stream.videoFramePublisher.listen { [callbacks] frame in
+    frameToken = stream.videoFramePublisher.listen { [callbacks, generation] frame in
       guard let image = frame.makeUIImage() else { return }
-      Task { @MainActor in callbacks.onFrame(image) }
+      Task { @MainActor in callbacks.onFrame(generation, image) }
     }
-    photoToken = stream.photoDataPublisher.listen { [callbacks] photo in
+    photoToken = stream.photoDataPublisher.listen { [callbacks, generation] photo in
       guard let image = UIImage(data: photo.data) else { return }
-      Task { @MainActor in callbacks.onPhoto(image) }
+      Task { @MainActor in callbacks.onPhoto(generation, image) }
     }
-    errorToken = stream.errorPublisher.listen { [callbacks] error in
-      Task { @MainActor in callbacks.onError(error) }
+    errorToken = stream.errorPublisher.listen { [callbacks, generation] error in
+      Task { @MainActor in callbacks.onError(generation, error) }
     }
   }
 }
