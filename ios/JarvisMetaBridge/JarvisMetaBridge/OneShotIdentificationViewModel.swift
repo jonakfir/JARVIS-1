@@ -93,10 +93,10 @@ final class OneShotIdentificationViewModel: ObservableObject {
 
   private func runAttempt(attemptID: UUID) async {
     do {
-      try await showCard(.identifying)
-      try validate(attemptID)
       state = .capturing
       let jpeg = try await captureJPEG()
+      try validate(attemptID)
+      try await showCard(.identifying)
       try validate(attemptID)
       let ticket = try await submit(jpeg)
       try validate(attemptID)

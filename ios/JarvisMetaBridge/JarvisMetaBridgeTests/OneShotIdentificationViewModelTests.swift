@@ -21,6 +21,20 @@ final class OneShotIdentificationViewModelTests: XCTestCase {
     XCTAssertEqual(model.state, .enrichedCardDisplayed(name: "Jane Doe", role: "Engineer", company: "Acme"))
   }
 
+  func testCameraCaptureCompletesBeforeDisplaySessionStarts() async {
+    let harness = IdentificationHarness(results: [.fixture(status: .failed, error: "none")])
+    harness.suspendCapture = true
+    let model = harness.makeModel()
+
+    model.startIdentification()
+    await harness.waitUntil { harness.captureCount == 1 }
+    XCTAssertTrue(harness.cards.isEmpty)
+
+    harness.suspendCapture = false
+    await harness.waitUntilFinished(model)
+    XCTAssertEqual(harness.cards, [.identifying, .notIdentified])
+  }
+
   func testDuplicateTapIsIgnored() async {
     let harness = IdentificationHarness(results: [.fixture(status: .failed, error: "none")])
     harness.suspendCapture = true
@@ -75,7 +89,7 @@ final class OneShotIdentificationViewModelTests: XCTestCase {
     XCTAssertEqual(model.state, .idle)
   }
 
-  func testCancelWhileIdentifyingCardIsSuspendedNeverCapturesOrAdvancesState() async {
+  func testCancelWhileIdentifyingCardIsSuspendedDoesNotAdvanceAfterCapture() async {
     let harness = IdentificationHarness(results: [.fixture(status: .identifying)])
     harness.suspendIdentifyingCard = true
     let model = harness.makeModel()
@@ -86,7 +100,7 @@ final class OneShotIdentificationViewModelTests: XCTestCase {
     harness.suspendIdentifyingCard = false
     await Task.yield()
 
-    XCTAssertEqual(harness.captureCount, 0)
+    XCTAssertEqual(harness.captureCount, 1)
     XCTAssertEqual(model.state, .idle)
   }
 

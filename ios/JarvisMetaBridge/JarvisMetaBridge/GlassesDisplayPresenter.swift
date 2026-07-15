@@ -158,7 +158,7 @@ final class GlassesDisplayPresenter {
 }
 
 @MainActor protocol IdentityDisplaySessionFactory: AnyObject {
-  func makeDisplaySession() throws -> any IdentityDisplaySessionResource
+  func makeDisplaySession() async throws -> any IdentityDisplaySessionResource
 }
 
 @MainActor protocol IdentityDisplaySessionResource: AnyObject {
@@ -232,7 +232,7 @@ final class DATIdentityDisplayConnection: IdentityDisplayConnection {
     currentAttempt = token
 
     do {
-      let session = try factory.makeDisplaySession()
+      let session = try await factory.makeDisplaySession()
       attempts[token] = Attempt(session: session, display: nil)
       let display = try await withThrowingTaskGroup(of: (any IdentityDisplayCapabilityResource).self) { group in
         group.addTask { @MainActor [weak self] in
@@ -291,11 +291,18 @@ final class DATIdentityDisplayConnection: IdentityDisplayConnection {
 @MainActor
 private final class DATIdentityDisplaySessionFactory: IdentityDisplaySessionFactory {
   private let wearables: WearablesInterface
-  init(wearables: WearablesInterface) { self.wearables = wearables }
-  func makeDisplaySession() throws -> any IdentityDisplaySessionResource {
-    let selector = AutoDeviceSelector(wearables: wearables) { $0.supportsDisplay() }
+  // AutoDeviceSelector is fed by devicesStream(). It must outlive the tap that
+  // creates a session or createSession can race with discovery and report that
+  // no eligible device is available even when the glasses are connected.
+  private let readiness: DATAutoDeviceSelectorReadiness
+  init(wearables: WearablesInterface) {
+    self.wearables = wearables
+    self.readiness = DATAutoDeviceSelectorReadiness(wearables: wearables)
+  }
+  func makeDisplaySession() async throws -> any IdentityDisplaySessionResource {
+    try await readiness.waitForEligibleDevice(timeout: .seconds(10))
     return DATIdentityDisplaySession(
-      session: try wearables.createSession(deviceSelector: selector))
+      session: try wearables.createSession(deviceSelector: readiness.selector))
   }
 }
 
@@ -306,14 +313,26 @@ private final class DATIdentityDisplaySession: IdentityDisplaySessionResource {
   init(session: DeviceSession) { self.session = session }
   func start() async throws {
     let states = session.stateStream()
+    let errors = session.errorStream()
     try session.start()
     if session.state == .started { return }
-    for await state in states {
-      if state == .started { return }
-      if state == .stopped { throw IdentityDisplayConnectionError.stoppedBeforeReady }
+    try await withThrowingTaskGroup(of: Void.self) { group in
+      group.addTask {
+        for await state in states {
+          if state == .started { return }
+          if state == .stopped { throw IdentityDisplayConnectionError.stoppedBeforeReady }
+        }
+        throw IdentityDisplayConnectionError.stoppedBeforeReady
+      }
+      group.addTask {
+        for await error in errors { throw error }
+        throw IdentityDisplayConnectionError.stoppedBeforeReady
+      }
+      defer { group.cancelAll() }
+      guard try await group.next() != nil else {
+        throw IdentityDisplayConnectionError.stoppedBeforeReady
+      }
     }
-    if Task.isCancelled { throw CancellationError() }
-    throw IdentityDisplayConnectionError.stoppedBeforeReady
   }
   func makeDisplay() throws -> any IdentityDisplayCapabilityResource {
     DATIdentityDisplayCapability(display: try session.addDisplay())

@@ -13,8 +13,61 @@ enum OneShotCaptureError: Error, Sendable, Equatable {
   case timedOut
 }
 
+enum DisplayDeviceReadinessError: Error, LocalizedError, Equatable {
+  case timedOut
+  var errorDescription: String? {
+    "No display-capable Meta glasses became available. Keep the glasses on and connected, then try again."
+  }
+}
+
+@MainActor protocol DisplayDeviceSelectorReadiness: AnyObject {
+  var hasEligibleDevice: Bool { get }
+  func availabilityStream() -> AsyncStream<Bool>
+}
+
+extension DisplayDeviceSelectorReadiness {
+  func waitForEligibleDevice(timeout: Duration) async throws {
+    if hasEligibleDevice { return }
+    let updates = availabilityStream()
+    try await withThrowingTaskGroup(of: Void.self) { group in
+      group.addTask {
+        for await available in updates where available { return }
+        try Task.checkCancellation()
+        throw DisplayDeviceReadinessError.timedOut
+      }
+      group.addTask {
+        try await Task.sleep(for: timeout)
+        throw DisplayDeviceReadinessError.timedOut
+      }
+      defer { group.cancelAll() }
+      guard try await group.next() != nil else { throw DisplayDeviceReadinessError.timedOut }
+    }
+  }
+}
+
+@MainActor
+final class DATAutoDeviceSelectorReadiness: DisplayDeviceSelectorReadiness {
+  let selector: AutoDeviceSelector
+  init(wearables: WearablesInterface) {
+    selector = AutoDeviceSelector(wearables: wearables) { $0.supportsDisplay() }
+  }
+  var hasEligibleDevice: Bool { selector.activeDevice != nil }
+  func availabilityStream() -> AsyncStream<Bool> {
+    let channel = AsyncStream<Bool>.makeStream()
+    let source = selector.activeDeviceStream()
+    Task {
+      for await device in source {
+        channel.continuation.yield(device != nil)
+        if Task.isCancelled { break }
+      }
+      channel.continuation.finish()
+    }
+    return channel.stream
+  }
+}
+
 @MainActor protocol OneShotCaptureSessionFactory: AnyObject {
-  func makeDisplayCapableSession() throws -> any OneShotCaptureSession
+  func makeDisplayCapableSession() async throws -> any OneShotCaptureSession
 }
 
 @MainActor protocol OneShotCaptureSession: AnyObject {
@@ -50,7 +103,7 @@ final class OneShotCaptureCoordinator {
     let task = Task { @MainActor [factory, timeout] in
       try await withThrowingTaskGroup(of: Data.self) { group in
         group.addTask { @MainActor in
-          let session = try factory.makeDisplayCapableSession()
+          let session = try await factory.makeDisplayCapableSession()
           var stream: (any OneShotPhotoStream)?
           defer {
             stream?.stop()
@@ -103,10 +156,17 @@ final class OneShotCaptureCoordinator {
 @MainActor
 final class DATOneShotCaptureSessionFactory: OneShotCaptureSessionFactory {
   private let wearables: WearablesInterface
-  init(wearables: WearablesInterface) { self.wearables = wearables }
-  func makeDisplayCapableSession() throws -> any OneShotCaptureSession {
-    let selector = AutoDeviceSelector(wearables: wearables) { $0.supportsDisplay() }
-    return DATOneShotCaptureSession(session: try wearables.createSession(deviceSelector: selector))
+  // AutoDeviceSelector learns about devices asynchronously. Retain it from app
+  // setup so it is populated before a user starts a one-shot capture.
+  private let readiness: DATAutoDeviceSelectorReadiness
+  init(wearables: WearablesInterface) {
+    self.wearables = wearables
+    self.readiness = DATAutoDeviceSelectorReadiness(wearables: wearables)
+  }
+  func makeDisplayCapableSession() async throws -> any OneShotCaptureSession {
+    try await readiness.waitForEligibleDevice(timeout: .seconds(10))
+    return DATOneShotCaptureSession(
+      session: try wearables.createSession(deviceSelector: readiness.selector))
   }
 }
 
@@ -118,13 +178,24 @@ private final class DATOneShotCaptureSession: OneShotCaptureSession {
 
   func start() async throws {
     let states = session.stateStream()
+    let errors = session.errorStream()
     try session.start()
     if session.state == .started { return }
-    for await state in states {
-      if state == .started { return }
-      if state == .stopped { throw DeviceStreamLifecycleError.sessionStopped }
+    try await withThrowingTaskGroup(of: Void.self) { group in
+      group.addTask {
+        for await state in states {
+          if state == .started { return }
+          if state == .stopped { throw DeviceStreamLifecycleError.sessionStopped }
+        }
+        throw DeviceStreamLifecycleError.sessionStopped
+      }
+      group.addTask {
+        for await error in errors { throw error }
+        throw DeviceStreamLifecycleError.sessionStopped
+      }
+      defer { group.cancelAll() }
+      guard try await group.next() != nil else { throw DeviceStreamLifecycleError.sessionStopped }
     }
-    throw DeviceStreamLifecycleError.sessionStopped
   }
 
   func makeStream() throws -> any OneShotPhotoStream {

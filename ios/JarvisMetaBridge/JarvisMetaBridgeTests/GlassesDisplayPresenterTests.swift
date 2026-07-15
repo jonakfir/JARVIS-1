@@ -232,7 +232,7 @@ private struct TestDisplayError: Error {}
     self.sessions = sessions
     self.errors = errors
   }
-  func makeDisplaySession() throws -> any IdentityDisplaySessionResource {
+  func makeDisplaySession() async throws -> any IdentityDisplaySessionResource {
     if !errors.isEmpty { throw errors.removeFirst() }
     return sessions.removeFirst()
   }
