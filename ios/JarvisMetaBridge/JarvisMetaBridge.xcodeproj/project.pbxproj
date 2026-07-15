@@ -30,6 +30,8 @@
 		DA7A00000000000000000310 /* MWDATDisplay in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A00000000000000000311 /* MWDATDisplay */; };
 		DA7A00000000000000000312 /* MWDATMockDevice in Frameworks */ = {isa = PBXBuildFile; productRef = DA7A00000000000000000313 /* MWDATMockDevice */; };
 		DA7A00000000000000000301 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000302 /* SmokeTests.swift */; };
+		DA7A00000000000000000320 /* DeviceStreamSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000321 /* DeviceStreamSessionManager.swift */; };
+		DA7A00000000000000000322 /* DeviceStreamSessionManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +59,8 @@
 		DA7A0000000000000000010A /* JarvisMetaBridge.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = JarvisMetaBridge.xcconfig; sourceTree = "<group>"; };
 		DA7A00000000000000000302 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		DA7A00000000000000000303 /* JarvisMetaBridgeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JarvisMetaBridgeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DA7A00000000000000000321 /* DeviceStreamSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStreamSessionManager.swift; sourceTree = "<group>"; };
+		DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceStreamSessionManagerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +119,7 @@
 				DA7A00000000000000000102 /* AppConfig.swift */,
 				DA7A00000000000000000103 /* WearablesViewModel.swift */,
 				DA7A00000000000000000104 /* StreamSessionViewModel.swift */,
+				DA7A00000000000000000321 /* DeviceStreamSessionManager.swift */,
 				DA7A00000000000000000105 /* JarvisFrameUploader.swift */,
 				DA7A00000000000000000106 /* ContentView.swift */,
 				DA7A0000000000000000010B /* IdentifyPersonWidgetView.swift */,
@@ -147,6 +152,7 @@
 			isa = PBXGroup;
 			children = (
 				DA7A00000000000000000302 /* SmokeTests.swift */,
+				DA7A00000000000000000323 /* DeviceStreamSessionManagerTests.swift */,
 			);
 			path = JarvisMetaBridgeTests;
 			sourceTree = "<group>";
@@ -264,6 +270,7 @@
 				DA7A00000000000000000202 /* AppConfig.swift in Sources */,
 				DA7A00000000000000000203 /* WearablesViewModel.swift in Sources */,
 				DA7A00000000000000000204 /* StreamSessionViewModel.swift in Sources */,
+				DA7A00000000000000000320 /* DeviceStreamSessionManager.swift in Sources */,
 				DA7A00000000000000000205 /* JarvisFrameUploader.swift in Sources */,
 				DA7A00000000000000000206 /* ContentView.swift in Sources */,
 				DA7A0000000000000000020B /* IdentifyPersonWidgetView.swift in Sources */,
@@ -286,6 +293,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DA7A00000000000000000301 /* SmokeTests.swift in Sources */,
+				DA7A00000000000000000322 /* DeviceStreamSessionManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
